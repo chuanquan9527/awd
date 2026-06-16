@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWD 防御运维工作台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航 -->
+        <header class="app-header">
+            <div class="header-left">
+                <span class="logo-icon">&#128737;</span>
+                <span class="logo-text">AWD 防御运维工作台</span>
+            </div>
+            <div class="header-right">
+                <span class="user-info" id="userInfo"></span>
+                <button class="header-btn" id="changePasswordBtn" title="修改密码">&#128274;</button>
+                <button class="header-btn" id="logoutBtn" title="退出登录">&#128682;</button>
+                <div class="alert-bell" id="alertBell">
+                    <span>&#128276;</span>
+                    <span class="alert-badge" id="alertBadge">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 标签页导航 -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="servers">
+                <span>&#128187;</span> 服务器管理
+            </button>
+            <button class="tab-btn" data-tab="backup">
+                <span>&#128190;</span> 备份恢复
+            </button>
+            <button class="tab-btn" data-tab="waf">
+                <span>&#128737;</span> WAF部署
+            </button>
+            <button class="tab-btn" data-tab="monitor">
+                <span>&#128065;</span> 监控告警
+            </button>
+            <button class="tab-btn" data-tab="probe">
+                <span>&#128269;</span> 资源探测
+            </button>
+        </nav>
+
+        <!-- 主内容区域 -->
+        <main class="main-content">
+            <!-- 服务器管理 -->
+            <section class="tab-panel active" id="panel-servers">
+                <div class="panel-header">
+                    <h2>服务器管理</h2>
+                    <button class="btn btn-primary" id="addServerBtn">
+                        <span>+</span> 新增服务器
+                    </button>
+                </div>
+                <div class="server-list" id="serverList"></div>
+            </section>
+
+            <!-- 备份恢复 -->
+            <section class="tab-panel" id="panel-backup">
+                <div class="panel-header">
+                    <h2>备份恢复</h2>
+                </div>
+                <div class="backup-content" id="backupContent">
+                    <p class="placeholder-text">请先选择服务器</p>
+                </div>
+            </section>
+
+            <!-- WAF部署 -->
+            <section class="tab-panel" id="panel-waf">
+                <div class="panel-header">
+                    <h2>WAF 一键部署</h2>
+                </div>
+                <div class="waf-content" id="wafContent">
+                    <p class="placeholder-text">请先选择服务器</p>
+                </div>
+            </section>
+
+            <!-- 监控告警 -->
+            <section class="tab-panel" id="panel-monitor">
+                <div class="panel-header">
+                    <h2>监控告警</h2>
+                </div>
+                <div class="monitor-tabs">
+                    <button class="monitor-tab-btn active" data-monitor="file">文件监控</button>
+                    <button class="monitor-tab-btn" data-monitor="process">进程监控</button>
+                    <button class="monitor-tab-btn" data-monitor="traffic">流量监控</button>
+                </div>
+                <div class="monitor-content" id="monitorContent">
+                    <!-- 文件监控 -->
+                    <div class="monitor-panel active" id="monitor-file">
+                        <p class="placeholder-text">请先选择服务器</p>
+                    </div>
+                    <!-- 进程监控 -->
+                    <div class="monitor-panel" id="monitor-process">
+                        <p class="placeholder-text">请先选择服务器</p>
+                    </div>
+                    <!-- 流量监控 -->
+                    <div class="monitor-panel" id="monitor-traffic">
+                        <div class="traffic-rules-section">
+                            <div class="section-header">
+                                <h3>流量监控规则</h3>
+                                <button class="btn btn-sm btn-primary" id="addTrafficRuleBtn">+ 新增规则</button>
+                            </div>
+                            <div class="traffic-rules-list" id="trafficRulesList"></div>
+                        </div>
+                        <div class="traffic-alerts-section">
+                            <h3>流量告警记录</h3>
+                            <div class="traffic-alerts-list" id="trafficAlertsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 资源探测 -->
+            <section class="tab-panel" id="panel-probe">
+                <div class="panel-header">
+                    <h2>资源探测</h2>
+                </div>
+                <div class="probe-content" id="probeContent">
+                    <div class="probe-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>探测目标</label>
+                                <textarea id="probeTargets" rows="3" placeholder="输入IP范围(192.168.1.1-192.168.1.100)或CIDR(192.168.1.0/24)或域名正则"></textarea>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>白名单（排除）</label>
+                                <textarea id="probeWhitelist" rows="2" placeholder="输入排除的IP或域名，每行一个"></textarea>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="startProbeBtn">开始探测</button>
+                    </div>
+                    <div class="probe-results" id="probeResults"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 底部状态栏 -->
+        <footer class="status-bar">
+            <span id="statusOnline">在线服务器: 0</span>
+            <span id="statusMonitor">活跃监控: 0</span>
+            <span id="statusAlerts">未读告警: 0</span>
+        </footer>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">标题</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <!-- 告警音效 -->
+    <audio id="alarmSound" preload="auto">
+        <source src="{{ url_for('static', filename='audio/alarm.mp3') }}" type="audio/mpeg">
+    </audio>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/backup.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/monitor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/probe.js') }}"></script>
+</body>
+</html>

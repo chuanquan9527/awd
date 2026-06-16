@@ -1,0 +1,7 @@
+{
+    "name": "iWAF",
+    "description": "iWAF - AWD专用PHP Web应用防火墙，支持流量解码、内核监控、LD_PRELOAD底层Hook、流量重放、盲打收割、自动提交Flag",
+    "version": "1.0",
+    "deploy_args": "--password <管理密码> --key <面板入口校验值>",
+    "deploy_args_desc": "管理密码: WAF面板登录密码; 面板key: 访问WAF管理面板的URL参数校验值"
+}
