@@ -51,7 +51,8 @@ class WebBackup:
         """
         safe_tag = self._sanitize_tag(version_tag)
         pattern = f'awd_backup_{server_id}_{safe_tag}_*.tar'
-        for d in ('/tmp', '/var/tmp', '/dev/shm'):
+        # 使用完整的候选目录列表（与备份时可选择的目录一致）
+        for d in self.CANDIDATE_DIRS:
             cmd = (
                 f"find '{d}' -maxdepth 1 -type f -name '{pattern}' "
                 f"-size +0c -printf '%T@ %p\\n' 2>/dev/null "
@@ -177,13 +178,14 @@ done
         if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
             raise Exception('备份下载到本地失败: 本地文件不存在或为空')
 
-        # 记录备份信息
+        # 记录备份信息（包含线上路径，恢复时直接使用）
         backup_id = BackupModel.create(
             server_id=server_id,
             backup_type='web',
             version_tag=safe_tag,
             file_path=local_path,
-            file_size=file_size
+            file_size=file_size,
+            remote_path=remote_tmp if not clean_remote else None
         )
 
         return {
@@ -200,10 +202,11 @@ done
     def restore(self, server_id, backup_id):
         """恢复网站源码 - 彻底恢复到指定备份版本
 
-        恢复策略（按用户需求顺序）：
+        恢复策略（优化版）：
         1. 前置校验（server / backup 记录 / web_root 合法性）
         2. 解析 tar 来源：
-           - 优先在远端按 version_tag 精确匹配 tar 包
+           - 优先使用备份记录中的 remote_path（直接读取，无需搜索）
+           - 若 remote_path 无效，再在远端按 version_tag 精确匹配
            - 若线上无匹配，则上传本地备份并校验
         3. 移除网站原始内容（不保留任何文件）
         4. 解压备份到 web_root
@@ -224,43 +227,70 @@ done
 
         version_tag = backup['version_tag']
         local_backup_path = backup['file_path']
+        stored_remote_path = backup['remote_path']  # 备份时记录的线上路径
         logs = []
 
-        # ---- 步骤 1: 解析 tar 来源（线上优先） ----
-        try:
-            remote_tar = self._find_remote_backup(server_id, version_tag)
-        except Exception as e:
-            # version_tag 非法等情况，直接抛出
-            raise Exception(f'查找线上备份失败: {str(e)}')
-
+        # ---- 步骤 1: 解析 tar 来源（优先使用记录的 remote_path） ----
         uploaded_tmp = None  # 仅本次上传的临时文件需要在最后清理
 
-        if remote_tar:
-            logs.append(f'[source] 命中线上备份: {remote_tar}')
-            source = '线上备份'
-            tar_path = remote_tar
-            cleanup_tar = False
-        else:
-            logs.append('[source] 线上无精确匹配，回退本地上传')
-            if not local_backup_path or not os.path.exists(local_backup_path):
-                raise Exception('线上无对应版本，且本地备份文件不存在，无法恢复')
-
-            writable_dir = self._get_writable_dir(server_id)
-            uploaded_tmp = f"{writable_dir}/awd_restore_{server_id}_{int(time.time())}.tar"
-
-            self.ssh.upload_file(server_id, local_backup_path, uploaded_tmp)
-            # 上传后做完整性校验
-            _, _, tcode = self.ssh.exec_command(
-                server_id, f"tar -tf '{uploaded_tmp}' >/dev/null 2>&1", timeout=60
+        # 优先使用备份时记录的线上路径
+        if stored_remote_path:
+            # 校验线上文件是否仍然存在且有效
+            stdout, _, code = self.ssh.exec_command(
+                server_id, f"test -f '{stored_remote_path}' && stat -c %s '{stored_remote_path}' 2>/dev/null || echo 0",
+                timeout=10
             )
-            if tcode != 0:
-                self.ssh.exec_command(server_id, f"rm -f '{uploaded_tmp}'", timeout=10)
-                raise Exception('上传的本地备份解析失败，已中止')
+            file_size = int(stdout.strip() or '0')
+            if code == 0 and file_size > 0:
+                # 校验 tar 完整性
+                _, _, tcode = self.ssh.exec_command(
+                    server_id, f"tar -tf '{stored_remote_path}' >/dev/null 2>&1", timeout=30
+                )
+                if tcode == 0:
+                    logs.append(f'[source] 使用记录的线上备份: {stored_remote_path}')
+                    source = '线上备份'
+                    tar_path = stored_remote_path
+                    cleanup_tar = False
+                else:
+                    logs.append(f'[source] 记录的线上备份已损坏，尝试重新查找')
+                    stored_remote_path = None  # 标记无效，走后续流程
+            else:
+                logs.append(f'[source] 记录的线上备份不存在，尝试重新查找')
+                stored_remote_path = None  # 标记无效，走后续流程
 
-            source = '本地备份'
-            tar_path = uploaded_tmp
-            cleanup_tar = True
-            logs.append(f'[upload] 已上传本地备份到 {uploaded_tmp}')
+        # 若记录的路径无效，尝试在远端搜索匹配
+        if not stored_remote_path:
+            try:
+                remote_tar = self._find_remote_backup(server_id, version_tag)
+            except Exception as e:
+                remote_tar = None
+
+            if remote_tar:
+                logs.append(f'[source] 命中线上备份: {remote_tar}')
+                source = '线上备份'
+                tar_path = remote_tar
+                cleanup_tar = False
+            else:
+                logs.append('[source] 线上无匹配，回退本地上传')
+                if not local_backup_path or not os.path.exists(local_backup_path):
+                    raise Exception('线上无对应版本，且本地备份文件不存在，无法恢复')
+
+                writable_dir = self._get_writable_dir(server_id)
+                uploaded_tmp = f"{writable_dir}/awd_restore_{server_id}_{int(time.time())}.tar"
+
+                self.ssh.upload_file(server_id, local_backup_path, uploaded_tmp)
+                # 上传后做完整性校验
+                _, _, tcode = self.ssh.exec_command(
+                    server_id, f"tar -tf '{uploaded_tmp}' >/dev/null 2>&1", timeout=60
+                )
+                if tcode != 0:
+                    self.ssh.exec_command(server_id, f"rm -f '{uploaded_tmp}'", timeout=10)
+                    raise Exception('上传的本地备份解析失败，已中止')
+
+                source = '本地备份'
+                tar_path = uploaded_tmp
+                cleanup_tar = True
+                logs.append(f'[upload] 已上传本地备份到 {uploaded_tmp}')
 
         try:
             # ---- 步骤 2: 移除网站原始内容（无保留） ----

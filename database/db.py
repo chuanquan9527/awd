@@ -65,7 +65,7 @@ def init_db():
         )
     ''')
 
-    # backups 表 - 备份记录
+    # backups 表 - 备份记录（新增 remote_path 字段）
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS backups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,10 +74,17 @@ def init_db():
             version_tag TEXT NOT NULL,
             file_path TEXT NOT NULL,
             file_size INTEGER,
+            remote_path TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
         )
     ''')
+
+    # 为已存在的 backups 表添加 remote_path 字段（兼容旧数据）
+    try:
+        cursor.execute('ALTER TABLE backups ADD COLUMN remote_path TEXT')
+    except sqlite3.OperationalError:
+        pass  # 字段已存在，忽略
 
     # file_baselines 表 - 文件基线
     cursor.execute('''

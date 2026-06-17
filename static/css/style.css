@@ -1058,6 +1058,77 @@ tbody tr:hover {
     to { transform: translateX(0); }
 }
 
+@keyframes slideOut {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ==================== 进度模态框 ==================== */
+.progress-steps {
+    margin-bottom: 1.5rem;
+}
+
+.progress-step {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0;
+    color: var(--text-muted);
+    transition: all 0.3s ease;
+}
+
+.progress-step.active {
+    color: var(--accent-blue);
+}
+
+.progress-step.done {
+    color: var(--accent-green);
+}
+
+.progress-step.error {
+    color: var(--accent-red);
+}
+
+.step-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.75rem;
+    font-size: 1rem;
+}
+
+.step-text {
+    font-size: 0.9rem;
+}
+
+.progress-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 1rem;
+}
+
+.progress-text {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
 /* ==================== 服务器详情分板块展示 ==================== */
 .server-detail-container {
     max-height: 65vh;

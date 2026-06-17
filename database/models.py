@@ -171,12 +171,12 @@ class BackupModel:
         )
 
     @staticmethod
-    def create(server_id, backup_type, version_tag, file_path, file_size):
+    def create(server_id, backup_type, version_tag, file_path, file_size, remote_path=None):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return execute_db('''
-            INSERT INTO backups (server_id, backup_type, version_tag, file_path, file_size, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', [server_id, backup_type, version_tag, file_path, file_size, now])
+            INSERT INTO backups (server_id, backup_type, version_tag, file_path, file_size, remote_path, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [server_id, backup_type, version_tag, file_path, file_size, remote_path, now])
 
     @staticmethod
     def get_by_id(backup_id):

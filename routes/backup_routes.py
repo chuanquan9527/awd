@@ -48,6 +48,66 @@ def restore_web(server_id, backup_id):
 
 # ==================== 数据库备份恢复 ====================
 
+@backup_bp.route('/servers/<int:server_id>/databases', methods=['GET'])
+@login_required
+def get_databases(server_id):
+    """获取服务器上的 MySQL 数据库列表"""
+    server = ServerModel.get_by_id(server_id)
+    if not server:
+        return jsonify({'success': False, 'message': '服务器不存在'}), 400
+
+    db_user = server['db_user'] or 'root'
+    db_pass = server['db_password'] or ''
+    default_db = server['db_name'] or ''
+
+    try:
+        # 执行 SHOW DATABASES 命令
+        if db_pass:
+            cmd = f"mysql -u'{db_user}' -p'{db_pass}' -e 'SHOW DATABASES;' 2>/dev/null"
+        else:
+            cmd = f"mysql -u'{db_user}' -e 'SHOW DATABASES;' 2>/dev/null"
+
+        stdout, stderr, code = ssh_manager.exec_command(server_id, cmd, timeout=30)
+
+        if code != 0 or not stdout.strip():
+            return jsonify({
+                'success': True,
+                'data': {
+                    'databases': [],
+                    'default': '',
+                    'error': '无法获取数据库列表，可能是密码错误或 MySQL 不可用'
+                }
+            })
+
+        # 解析数据库列表（跳过标题行和系统数据库）
+        lines = stdout.strip().split('\n')
+        system_dbs = ['Database', 'information_schema', 'mysql', 'performance_schema']
+        databases = [line.strip() for line in lines[1:] if line.strip() and line.strip() not in system_dbs]
+
+        # 检查默认数据库是否在列表中
+        if default_db and default_db not in databases:
+            # 默认数据库不在列表中，可能无权限或不存在
+            default_db = ''
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'databases': databases,
+                'default': default_db,
+                'db_user': db_user
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': True,
+            'data': {
+                'databases': [],
+                'default': '',
+                'error': str(e)
+            }
+        })
+
+
 @backup_bp.route('/servers/<int:server_id>/backup/database', methods=['POST'])
 @login_required
 def backup_database(server_id):
@@ -55,12 +115,14 @@ def backup_database(server_id):
     data = request.get_json()
     version_tag = data.get('version_tag', '').strip()
     db_name = data.get('db_name', '').strip() or None
+    storage_dir = data.get('storage_dir', '').strip() or '/tmp'
+    clean_remote = data.get('clean_remote', False)
 
     if not version_tag:
         return jsonify({'success': False, 'message': '请输入版本标签'}), 400
 
     try:
-        result = db_backup.backup(server_id, version_tag, db_name)
+        result = db_backup.backup(server_id, version_tag, db_name, storage_dir, clean_remote)
         return jsonify({'success': True, 'message': '数据库备份成功', 'data': result})
     except Exception as e:
         return jsonify({'success': False, 'message': f'备份失败: {str(e)}'}), 500
@@ -115,25 +177,52 @@ def delete_online_backup(backup_id):
 
     try:
         backup = BackupModel.get_by_id(backup_id)
+        backup_type = backup['backup_type'] if backup else None
         version_tag = backup['version_tag'] if backup else None
+        remote_path = backup['remote_path'] if backup else None
 
-        # 清理线上临时文件
-        search_patterns = [
-            '/tmp/awd_backup_*.tar',
-            '/var/tmp/awd_backup_*.tar',
-            '/dev/shm/awd_backup_*.tar'
-        ]
-        for pattern in search_patterns:
-            ssh_manager.exec_command(server_id, f'rm -f {pattern} 2>/dev/null', timeout=10)
+        # 优先使用备份记录中的 remote_path 精确删除
+        if remote_path:
+            ssh_manager.exec_command(
+                server_id,
+                f"rm -f '{remote_path}' 2>/dev/null",
+                timeout=10
+            )
+            return jsonify({'success': True, 'message': f'线上备份已删除: {remote_path}'})
 
-        # 如果有版本标签，尝试精确匹配删除
-        if version_tag:
-            for d in ['/tmp', '/var/tmp', '/dev/shm']:
-                ssh_manager.exec_command(
-                    server_id,
-                    f"rm -f {d}/awd_backup_*_{version_tag}_*.tar 2>/dev/null",
-                    timeout=10
-                )
+        # 若无 remote_path，使用完整目录列表搜索删除
+        search_dirs = ['/tmp', '/var/tmp', '/dev/shm', '/var/www/html', '/var/www', '/home']
+
+        if backup_type == 'database':
+            if version_tag:
+                for d in search_dirs:
+                    ssh_manager.exec_command(
+                        server_id,
+                        f"rm -f '{d}/awd_db_backup_{server_id}_{version_tag}_*.sql' 2>/dev/null",
+                        timeout=10
+                    )
+            else:
+                for d in search_dirs:
+                    ssh_manager.exec_command(
+                        server_id,
+                        f"rm -f '{d}/awd_db_backup_*.sql' 2>/dev/null",
+                        timeout=10
+                    )
+        else:
+            if version_tag:
+                for d in search_dirs:
+                    ssh_manager.exec_command(
+                        server_id,
+                        f"rm -f '{d}/awd_backup_{server_id}_{version_tag}_*.tar' 2>/dev/null",
+                        timeout=10
+                    )
+            else:
+                for d in search_dirs:
+                    ssh_manager.exec_command(
+                        server_id,
+                        f"rm -f '{d}/awd_backup_*.tar' 2>/dev/null",
+                        timeout=10
+                    )
 
         return jsonify({'success': True, 'message': '线上临时文件已清理'})
     except Exception as e:
