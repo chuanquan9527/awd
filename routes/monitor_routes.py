@@ -1,12 +1,11 @@
 from flask import Blueprint, request, jsonify, current_app
 from routes.auth_routes import login_required
 from database.models import (
-    TrafficRuleModel, TrafficAlertModel, AlertModel, MonitorConfigModel, ServerModel
+    AlertModel, MonitorConfigModel, ServerModel
 )
 from services.ssh_manager import SSHManager
 from services.file_monitor import FileMonitor
 from services.process_monitor import ProcessMonitor
-from services.traffic_monitor import TrafficMonitor
 import re
 
 monitor_bp = Blueprint('monitor', __name__, url_prefix='/api')
@@ -18,7 +17,6 @@ _socketio = None
 # 全局监控器实例（单例模式，避免每次请求创建新实例导致线程状态丢失）
 _file_monitor = None
 _process_monitor = None
-_traffic_monitor = None
 
 def init_socketio(socketio):
     """初始化 socketio 实例"""
@@ -41,14 +39,6 @@ def get_process_monitor():
     if _process_monitor is None:
         _process_monitor = ProcessMonitor(ssh_manager, _socketio)
     return _process_monitor
-
-def get_traffic_monitor():
-    global _socketio, _traffic_monitor
-    if _socketio is None:
-        _socketio = current_app.extensions.get('socketio')
-    if _traffic_monitor is None:
-        _traffic_monitor = TrafficMonitor(ssh_manager, _socketio)
-    return _traffic_monitor
 
 
 # ==================== 文件监控 ====================
@@ -109,10 +99,6 @@ def start_monitor(server_id):
             pm = get_process_monitor()
             results.append(pm.start_monitoring(server_id, interval, kill_on_detect))
 
-        if monitor_type in ('all', 'traffic'):
-            tm = get_traffic_monitor()
-            results.append(tm.start_monitoring(server_id))
-
         return jsonify({'success': True, 'message': '监控已启动', 'data': results})
     except Exception as e:
         return jsonify({'success': False, 'message': f'启动监控失败: {str(e)}'}), 500
@@ -139,12 +125,6 @@ def stop_monitor(server_id):
             if server_id in pm._threads and pm._threads[server_id].is_alive():
                 print(f'[监控] 强制停止服务器 {server_id} 的进程监控线程')
             results.append(pm.stop_monitoring(server_id))
-
-        if monitor_type in ('all', 'traffic'):
-            tm = get_traffic_monitor()
-            if server_id in tm._threads and tm._threads[server_id].is_alive():
-                print(f'[监控] 强制停止服务器 {server_id} 的流量监控线程')
-            results.append(tm.stop_monitoring(server_id))
 
         success = all(r.get('success') for r in results)
         return jsonify({
@@ -176,7 +156,6 @@ def get_monitor_status(server_id):
             'data': {
                 'file_monitor_enabled': bool(config['file_monitor_enabled']),
                 'process_monitor_enabled': bool(config['process_monitor_enabled']),
-                'traffic_monitor_enabled': bool(config['traffic_monitor_enabled']),
                 'monitor_interval': config['monitor_interval'],
                 'kill_on_detect': bool(config['kill_on_detect']),
                 'watched_dirs': config['watched_dirs'],
@@ -187,7 +166,6 @@ def get_monitor_status(server_id):
     return jsonify({'success': True, 'data': {
         'file_monitor_enabled': False,
         'process_monitor_enabled': False,
-        'traffic_monitor_enabled': False,
         'monitor_interval': 5,
         'kill_on_detect': False,
         'watched_dirs': '[]',
@@ -311,116 +289,3 @@ def delete_all_alerts():
         return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
 
 
-# ==================== 流量监控规则 API ====================
-
-@monitor_bp.route('/traffic/rules', methods=['GET'])
-@login_required
-def get_traffic_rules():
-    """获取流量监控规则列表"""
-    server_id = request.args.get('server_id', type=int)
-    rules = TrafficRuleModel.get_all(server_id)
-    return jsonify({
-        'success': True,
-        'data': [dict(row) for row in rules]
-    })
-
-
-@monitor_bp.route('/traffic/rules', methods=['POST'])
-@login_required
-def add_traffic_rule():
-    """新增流量监控规则"""
-    data = request.get_json()
-
-    if not data.get('rule_name') or not data.get('pattern'):
-        return jsonify({'success': False, 'message': '规则名称和正则表达式不能为空'}), 400
-
-    try:
-        re.compile(data['pattern'])
-    except re.error as e:
-        return jsonify({'success': False, 'message': f'正则表达式格式错误: {str(e)}'}), 400
-
-    try:
-        rule_id = TrafficRuleModel.create(data)
-        return jsonify({'success': True, 'message': '规则添加成功', 'data': {'id': rule_id}})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'添加失败: {str(e)}'}), 500
-
-
-@monitor_bp.route('/traffic/rules/<int:rule_id>', methods=['PUT'])
-@login_required
-def update_traffic_rule(rule_id):
-    """更新流量监控规则"""
-    data = request.get_json()
-    if 'pattern' in data:
-        try:
-            re.compile(data['pattern'])
-        except re.error as e:
-            return jsonify({'success': False, 'message': f'正则表达式格式错误: {str(e)}'}), 400
-    try:
-        TrafficRuleModel.update(rule_id, data)
-        return jsonify({'success': True, 'message': '规则更新成功'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500
-
-
-@monitor_bp.route('/traffic/rules/<int:rule_id>', methods=['DELETE'])
-@login_required
-def delete_traffic_rule(rule_id):
-    """删除流量监控规则"""
-    try:
-        TrafficRuleModel.delete(rule_id)
-        return jsonify({'success': True, 'message': '规则删除成功'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
-
-
-@monitor_bp.route('/traffic/alerts', methods=['GET'])
-@login_required
-def get_traffic_alerts():
-    """获取流量告警记录"""
-    server_id = request.args.get('server_id', type=int)
-    limit = request.args.get('limit', 100, type=int)
-    if server_id:
-        alerts = TrafficAlertModel.get_by_server(server_id, limit)
-    else:
-        alerts = TrafficAlertModel.get_all(limit)
-    return jsonify({'success': True, 'data': [dict(row) for row in alerts]})
-
-
-# ==================== 流量监控启停 ====================
-
-@monitor_bp.route('/servers/<int:server_id>/traffic/start', methods=['POST'])
-@login_required
-def start_traffic_monitor(server_id):
-    """启动流量监控"""
-    try:
-        tm = get_traffic_monitor()
-        result = tm.start_monitoring(server_id)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'启动失败: {str(e)}'}), 500
-
-
-@monitor_bp.route('/servers/<int:server_id>/traffic/stop', methods=['POST'])
-@login_required
-def stop_traffic_monitor(server_id):
-    """停止流量监控"""
-    try:
-        tm = get_traffic_monitor()
-        result = tm.stop_monitoring(server_id)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'停止失败: {str(e)}'}), 500
-
-
-@monitor_bp.route('/servers/<int:server_id>/traffic/status', methods=['GET'])
-@login_required
-def get_traffic_monitor_status(server_id):
-    """获取流量监控状态"""
-    config = MonitorConfigModel.get_by_server(server_id)
-    if config:
-        return jsonify({
-            'success': True,
-            'data': {'traffic_monitor_enabled': bool(config['traffic_monitor_enabled'])}
-        })
-    return jsonify({'success': True, 'data': {'traffic_monitor_enabled': False}})

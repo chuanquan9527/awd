@@ -985,68 +985,6 @@ tbody tr:hover {
     word-break: break-all;
 }
 
-/* ==================== 流量规则 ==================== */
-.traffic-rules-section,
-.traffic-alerts-section {
-    margin-bottom: 1.5rem;
-}
-
-.section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-}
-
-.section-header h3 {
-    font-size: 1rem;
-    font-weight: 600;
-}
-
-.traffic-rule-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    margin-bottom: 0.5rem;
-}
-
-.traffic-rule-item .rule-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.traffic-rule-item .rule-name {
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: 0.2rem;
-}
-
-.traffic-rule-item .rule-pattern {
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    display: inline-block;
-    margin-bottom: 0.2rem;
-}
-
-.traffic-rule-item .rule-desc {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-.traffic-rule-item .rule-actions {
-    display: flex;
-    gap: 0.4rem;
-    flex-shrink: 0;
-}
-
 /* ==================== 开关 ==================== */
 .toggle-switch {
     position: relative;

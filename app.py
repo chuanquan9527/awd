@@ -25,17 +25,6 @@ init_db()
 # 初始化默认管理员
 init_default_admin()
 
-# 初始化默认流量监控规则
-from database.models import TrafficRuleModel
-def init_default_traffic_rules():
-    existing = TrafficRuleModel.get_all()
-    if len(existing) == 0:
-        for rule in config.DEFAULT_TRAFFIC_RULES:
-            TrafficRuleModel.create(rule)
-        print(f"[初始化] 已创建 {len(config.DEFAULT_TRAFFIC_RULES)} 条默认流量监控规则")
-
-init_default_traffic_rules()
-
 
 @app.route('/')
 def index():

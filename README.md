@@ -1,6 +1,6 @@
 # AWD 防御运维工作台
 
-面向 AWD (Attack With Defense) 网络攻防对抗比赛的防御自动化工作台。将服务器管理、备份恢复、WAF 部署、文件/进程/流量监控、资源探测整合到一个可视化 Web 界面中，实现一键式防御操作和实时告警。
+面向 AWD (Attack With Defense) 网络攻防对抗比赛的防御自动化工作台。将服务器管理、备份恢复、WAF 部署、文件/进程监控整合到一个可视化 Web 界面中，实现一键式防御操作和实时告警。
 
 ## 功能概览
 
@@ -9,7 +9,6 @@
 - **服务器管理**：新增、编辑、删除多台主机，通过 SSH (paramiko) 连接并接管 Linux 主机，区分己方主机和夺取主机
 - **服务器信息采集**：连接后自动采集 12 类详细信息——网络配置、系统信息、Web 服务、数据库、缓存/Redis、用户安全、定时任务、可写目录、Flag 信息、端口与进程详情、安全加固、环境/容器信息
 - **分步连接进度**：前端展示分步连接进度（SSH 连接 → 基础信息 → Web 根目录检查 → MySQL 检查 → 完成）
-- **资源探测**：支持 IP 范围、CIDR 网段、域名格式，50 线程并发 HTTP/HTTPS 探测，支持白名单排除，实时显示进度和结果
 
 ### 2. 基线运维
 
@@ -20,8 +19,7 @@
 ### 3. 监测告警
 
 - **文件基线监测**：基于 MD5 哈希比对实时检查文件变化，检测新增/修改/删除文件，触发 WebSocket 实时告警并播放告警音效
-- **进程监测**：检测可疑进程（不死马、反弹 shell 等），支持自动 kill 异常进程
-- **流量监控**：通过 SSH `tail -F` 实时追踪 Apache/Nginx 访问日志（支持 Apache Combined、Nginx 默认、简单格式解析），支持自定义正则匹配规则（增删改查 + 启用/禁用），预置 5 条规则模板
+- **进程监测**：检测可疑进程（不死马、反弹 shell 等），支持自动 kill 异常进程，提供用户过滤和排序功能
 
 ### 4. 安全认证
 
@@ -36,9 +34,8 @@
 | 语言 | Python 3.11+ |
 | 后端框架 | Flask 3.0 + Flask-SocketIO 5.3（threading 异步模式） |
 | SSH 管理 | paramiko（连接池 + 自动重连 + 指数退避） |
-| 数据库 | SQLite（零配置，单机部署，8 张表） |
+| 数据库 | SQLite（零配置，单机部署） |
 | 实时通信 | WebSocket（Flask-SocketIO） |
-| HTTP 探测 | requests 2.32 |
 | 前端 | HTML + CSS + JavaScript（单页面应用，无框架） |
 | 主题 | 深色军事防御风格（蓝黑背景 + 蓝绿辉光） |
 | 包管理 | uv（pyproject.toml + uv.lock） |
@@ -98,7 +95,7 @@ awd/
 ├── .python-version             # Python 版本锁定（3.11）
 ├── database/
 │   ├── db.py                   # SQLite 连接管理，建表初始化
-│   └── models.py               # 数据模型（User / Server / Backup / Alert 等 8 张表）
+│   └── models.py               # 数据模型（User / Server / Backup / Alert 等）
 ├── services/
 │   ├── ssh_manager.py          # SSH 连接池管理（单例 + 线程安全 + 自动重连）
 │   ├── server_info.py          # 远程服务器信息采集（12 类信息 + 白名单校验）
@@ -106,27 +103,23 @@ awd/
 │   ├── database_backup.py      # 数据库备份恢复（mysqldump / mysql CLI）
 │   ├── waf_deploy.py           # WAF 包管理（部署 / 卸载 / 深度清理 / 状态检查）
 │   ├── file_monitor.py         # 文件完整性监控（MD5 基线比对 + WebSocket 告警）
-│   ├── process_monitor.py      # 进程监控（正则匹配 + 自动 kill）
-│   ├── traffic_monitor.py      # 流量监控（tail -F + 多格式日志解析 + 规则匹配）
-│   └── resource_probe.py       # 资源探测（50 线程并发 HTTP/HTTPS 扫描）
+│   └── process_monitor.py      # 进程监控（正则匹配 + 自动 kill）
 ├── routes/
-│   ├── __init__.py             # 蓝图注册（5 个 Blueprint）
+│   ├── __init__.py             # 蓝图注册（4 个 Blueprint）
 │   ├── auth_routes.py          # 登录认证 API（/api/auth）
 │   ├── server_routes.py        # 服务器管理 API（/api/servers）
 │   ├── backup_routes.py        # 备份恢复 + WAF API（/api）
-│   ├── monitor_routes.py       # 监控 + 流量规则 API（/api）
-│   └── probe_routes.py         # 资源探测 API（/api/probe）
+│   └── monitor_routes.py       # 监控 API（/api）
 ├── static/
 │   ├── css/style.css           # 深色军事主题样式
 │   └── js/
 │       ├── app.js              # SPA 主逻辑（服务器管理 + 详情模态框 13 标签页）
 │       ├── websocket.js        # WebSocket 实时告警（断线重连 + 浏览器通知）
 │       ├── backup.js           # 备份恢复 + WAF 部署前端
-│       ├── monitor.js          # 监控面板前端（文件 / 进程 / 告警）
-│       └── probe.js            # 资源探测前端
+│       └── monitor.js          # 监控面板前端（文件 / 进程 / 告警）
 ├── templates/
 │   ├── login.html              # 登录页面
-│   └── index.html              # 主界面（5 标签页 SPA）
+│   └── index.html              # 主界面（4 标签页 SPA）
 ├── waf/
 │   └── iWaf/                   # 内置 iWAF（PhoenixWAF v3.0.0）WAF 包
 │       ├── config.json         # 包元数据（名称 / 版本 / 部署参数）
@@ -170,29 +163,8 @@ awd/
 1. 切换到「进程监控」子标签页，选择服务器
 2. 点击「启动进程监控」，系统自动检测不死马、反弹 shell 等可疑进程
 3. 勾选「检测到异常自动杀进程」可启用自动处置
-
-### 流量监控
-
-1. 切换到「流量监控」子标签页
-2. 系统预置了 5 条常见规则（Flag 读取、SQL 注入、命令执行、目录穿越、Webshell 访问）
-3. 可通过「新增规则」添加自定义正则匹配规则（支持规则级启用/禁用、编辑、删除）
-4. 启动监控后，通过 SSH `tail -F` 实时追踪访问日志，匹配到规则的请求实时告警
-
-### 资源探测
-
-1. 在「资源探测」标签页输入目标（支持 IP 范围、CIDR、域名，每行一个）
-2. 配置白名单排除本机、裁判机等
-3. 点击「开始探测」，系统 50 线程并发扫描，实时显示进度和结果（IP、端口、状态码、标题、响应时间）
-
-## 预置流量监控规则
-
-| 规则名称 | 正则表达式 | 级别 |
-|----------|-----------|------|
-| Flag 读取检测 | `(?i)(flag\|getflag\|readflag\|cat /flag)` | 严重 |
-| SQL 注入检测 | `(?i)(union\s+select\|information_schema\|into\s+outfile\|load_file)` | 严重 |
-| 命令执行检测 | `(?i)(system\s*\(\|exec\s*\(\|passthru\s*\(\|shell_exec\s*\(\|eval\s*\()` | 严重 |
-| 目录穿越检测 | `(\.\./\|\.\.\\\|%2e%2e%2f\|%252e%252e%252f)` | 警告 |
-| Webshell 访问检测 | `(?i)(shell\.php\|cmd\.php\|c99\.php\|r57\.php\|backdoor\|webshell)` | 严重 |
+4. 支持用户过滤（按用户筛选进程）和排序（按 CPU/内存使用率排序）
+5. 提供手动刷新按钮，实时更新进程列表
 
 ## 内置 WAF：iWAF（PhoenixWAF v3.0.0）
 

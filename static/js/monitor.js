@@ -672,7 +672,6 @@ async function loadMonitorStatus() {
             <div style="display:flex;gap:1rem;font-size:0.85rem;">
                 <span>文件监控: <span class="badge badge-${d.file_monitor_enabled ? 'online' : 'offline'}">${d.file_monitor_enabled ? '运行中' : '未启动'}</span></span>
                 <span>进程监控: <span class="badge badge-${d.process_monitor_enabled ? 'online' : 'offline'}">${d.process_monitor_enabled ? '运行中' : '未启动'}</span></span>
-                <span>流量监控: <span class="badge badge-${d.traffic_monitor_enabled ? 'online' : 'offline'}">${d.traffic_monitor_enabled ? '运行中' : '未启动'}</span></span>
                 <span>间隔: ${d.monitor_interval}s</span>
                 <span>基线: <span class="badge badge-${d.has_baseline ? 'online' : 'offline'}">${d.has_baseline ? '已建立' : '未建立'}</span></span>
             </div>

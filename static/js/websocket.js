@@ -36,10 +36,6 @@ function initWebSocket() {
             handleAlert(alert);
         });
 
-        socket.on('probe_progress', function(progress) {
-            handleProbeProgress(progress);
-        });
-
         socket.on('connect_error', function(error) {
             console.error('[WebSocket] 连接错误:', error);
         });
@@ -83,13 +79,6 @@ function handleAlert(alert) {
             body: alert.message,
             icon: '/static/favicon.ico'
         });
-    }
-}
-
-function handleProbeProgress(progress) {
-    // 更新探测进度
-    if (AppState.currentTab === 'probe') {
-        updateProbeProgress(progress);
     }
 }
 

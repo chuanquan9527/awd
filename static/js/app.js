@@ -155,7 +155,6 @@ function switchTab(tab) {
     if (tab === 'backup') { initBackupPage(); initWAFPage(); }
     if (tab === 'waf') initWAFPage();
     if (tab === 'monitor') { initMonitorPage(); loadMonitorData(); }
-    if (tab === 'probe') initProbePage();
 }
 
 function switchMonitorTab(monitorTab) {
@@ -168,8 +167,6 @@ function switchMonitorTab(monitorTab) {
     document.querySelectorAll('.monitor-panel').forEach(panel => {
         panel.classList.toggle('active', panel.id === `monitor-${monitorTab}`);
     });
-
-    if (monitorTab === 'traffic') loadTrafficRules();
 }
 
 // ==================== 模态框 ====================
@@ -1299,156 +1296,9 @@ function switchDetailTab(idx) {
     if (panel) panel.classList.add('active');
 }
 
-// ==================== 流量监控规则 ====================
-async function loadTrafficRules() {
-    const data = await apiRequest('/api/traffic/rules');
-    if (!data || !data.success) return;
-
-    const container = document.getElementById('trafficRulesList');
-    const rules = data.data || [];
-
-    if (rules.length === 0) {
-        container.innerHTML = '<p class="placeholder-text">暂无规则，请点击"新增规则"添加</p>';
-        return;
-    }
-
-    container.innerHTML = rules.map(rule => `
-        <div class="traffic-rule-item">
-            <div class="rule-info">
-                <div class="rule-name">
-                    ${escapeHtml(rule.rule_name)}
-                    <span class="badge badge-${rule.severity}">${getSeverityText(rule.severity)}</span>
-                    ${rule.server_id === 0 ? '<span class="badge badge-info">全局</span>' : ''}
-                </div>
-                <div class="rule-pattern">${escapeHtml(rule.pattern)}</div>
-                <div class="rule-desc">${escapeHtml(rule.description || '')}</div>
-            </div>
-            <div class="rule-actions">
-                <label class="toggle-switch">
-                    <input type="checkbox" ${rule.enabled ? 'checked' : ''}
-                        onchange="toggleTrafficRule(${rule.id}, this.checked)">
-                    <span class="toggle-slider"></span>
-                </label>
-                <button class="btn btn-sm btn-secondary" onclick="editTrafficRule(${rule.id})">编辑</button>
-                <button class="btn btn-sm btn-danger" onclick="deleteTrafficRule(${rule.id})">删除</button>
-            </div>
-        </div>
-    `).join('');
-}
-
-async function toggleTrafficRule(ruleId, enabled) {
-    const result = await apiRequest(`/api/traffic/rules/${ruleId}`, {
-        method: 'PUT',
-        body: { enabled: enabled ? 1 : 0 }
-    });
-    if (!result || !result.success) {
-        alert(result ? result.message : '操作失败');
-        loadTrafficRules();
-    }
-}
-
-async function deleteTrafficRule(ruleId) {
-    if (!confirm('确定要删除这条规则吗？')) return;
-    const result = await apiRequest(`/api/traffic/rules/${ruleId}`, { method: 'DELETE' });
-    if (result && result.success) {
-        loadTrafficRules();
-    } else {
-        alert(result ? result.message : '删除失败');
-    }
-}
-
-function showAddTrafficRuleModal() {
-    showModal('新增流量监控规则', `
-        <div class="form-group">
-            <label>规则名称 *</label>
-            <input type="text" id="ruleName" placeholder="如: Flag读取检测">
-        </div>
-        <div class="form-group">
-            <label>正则表达式 *</label>
-            <input type="text" id="rulePattern" placeholder="如: (?i)(flag|getflag)">
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>告警级别</label>
-                <select id="ruleSeverity">
-                    <option value="info">信息</option>
-                    <option value="warning" selected>警告</option>
-                    <option value="critical">严重</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>适用范围</label>
-                <select id="ruleScope">
-                    <option value="0" selected>全局（所有服务器）</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-group">
-            <label>规则描述</label>
-            <textarea id="ruleDescription" rows="2" placeholder="描述这条规则的用途"></textarea>
-        </div>
-        <div id="ruleError" style="color: var(--accent-red); font-size: 0.85rem; display: none;"></div>
-    `, [
-        { text: '取消', class: 'btn-secondary', action: hideModal },
-        {
-            text: '添加',
-            class: 'btn-primary',
-            action: async () => {
-                const errorDiv = document.getElementById('ruleError');
-                const ruleData = {
-                    rule_name: document.getElementById('ruleName').value.trim(),
-                    pattern: document.getElementById('rulePattern').value.trim(),
-                    severity: document.getElementById('ruleSeverity').value,
-                    server_id: parseInt(document.getElementById('ruleScope').value),
-                    description: document.getElementById('ruleDescription').value.trim()
-                };
-
-                if (!ruleData.rule_name || !ruleData.pattern) {
-                    errorDiv.textContent = '规则名称和正则表达式不能为空';
-                    errorDiv.style.display = 'block';
-                    return;
-                }
-
-                // 验证正则表达式
-                try {
-                    new RegExp(ruleData.pattern);
-                } catch (e) {
-                    errorDiv.textContent = '正则表达式格式错误: ' + e.message;
-                    errorDiv.style.display = 'block';
-                    return;
-                }
-
-                const result = await apiRequest('/api/traffic/rules', {
-                    method: 'POST',
-                    body: ruleData
-                });
-
-                if (result && result.success) {
-                    hideModal();
-                    loadTrafficRules();
-                } else {
-                    errorDiv.textContent = result ? result.message : '添加失败';
-                    errorDiv.style.display = 'block';
-                }
-            }
-        }
-    ]);
-}
-
-function editTrafficRule(ruleId) {
-    // 简化为重新加载后编辑，实际应用中可以预填充表单
-    alert('编辑功能：请删除后重新添加规则');
-}
-
 // ==================== 监控数据加载 ====================
 function loadMonitorData() {
-    if (AppState.currentMonitorTab === 'traffic') {
-        loadTrafficRules();
-    }
-}
-
-function loadProbeData() {
-    // 资源探测页面初始化
+    // 文件监控和进程监控数据在各自的模块中加载
 }
 
 // ==================== 状态栏更新 ====================
@@ -1501,11 +1351,6 @@ async function init() {
     document.getElementById('changePasswordBtn').addEventListener('click', showChangePasswordModal);
     document.getElementById('addServerBtn').addEventListener('click', showAddServerModal);
     document.getElementById('modalClose').addEventListener('click', hideModal);
-    // 移除点击空白区域关闭弹窗的行为
-    // document.getElementById('modalOverlay').addEventListener('click', (e) => {
-    //     if (e.target === document.getElementById('modalOverlay')) hideModal();
-    // });
-    document.getElementById('addTrafficRuleBtn').addEventListener('click', showAddTrafficRuleModal);
 
     // 加载初始数据
     loadServers();

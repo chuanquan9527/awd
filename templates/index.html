@@ -39,9 +39,6 @@
             <button class="tab-btn" data-tab="monitor">
                 <span>&#128065;</span> 监控告警
             </button>
-            <button class="tab-btn" data-tab="probe">
-                <span>&#128269;</span> 资源探测
-            </button>
         </nav>
 
         <!-- 主内容区域 -->
@@ -85,7 +82,6 @@
                 <div class="monitor-tabs">
                     <button class="monitor-tab-btn active" data-monitor="file">文件监控</button>
                     <button class="monitor-tab-btn" data-monitor="process">进程监控</button>
-                    <button class="monitor-tab-btn" data-monitor="traffic">流量监控</button>
                 </div>
                 <div class="monitor-content" id="monitorContent">
                     <!-- 文件监控 -->
@@ -96,45 +92,6 @@
                     <div class="monitor-panel" id="monitor-process">
                         <p class="placeholder-text">请先选择服务器</p>
                     </div>
-                    <!-- 流量监控 -->
-                    <div class="monitor-panel" id="monitor-traffic">
-                        <div class="traffic-rules-section">
-                            <div class="section-header">
-                                <h3>流量监控规则</h3>
-                                <button class="btn btn-sm btn-primary" id="addTrafficRuleBtn">+ 新增规则</button>
-                            </div>
-                            <div class="traffic-rules-list" id="trafficRulesList"></div>
-                        </div>
-                        <div class="traffic-alerts-section">
-                            <h3>流量告警记录</h3>
-                            <div class="traffic-alerts-list" id="trafficAlertsList"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 资源探测 -->
-            <section class="tab-panel" id="panel-probe">
-                <div class="panel-header">
-                    <h2>资源探测</h2>
-                </div>
-                <div class="probe-content" id="probeContent">
-                    <div class="probe-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>探测目标</label>
-                                <textarea id="probeTargets" rows="3" placeholder="输入IP范围(192.168.1.1-192.168.1.100)或CIDR(192.168.1.0/24)或域名正则"></textarea>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>白名单（排除）</label>
-                                <textarea id="probeWhitelist" rows="2" placeholder="输入排除的IP或域名，每行一个"></textarea>
-                            </div>
-                        </div>
-                        <button class="btn btn-primary" id="startProbeBtn">开始探测</button>
-                    </div>
-                    <div class="probe-results" id="probeResults"></div>
                 </div>
             </section>
         </main>
@@ -170,6 +127,5 @@
     <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
     <script src="{{ url_for('static', filename='js/backup.js') }}"></script>
     <script src="{{ url_for('static', filename='js/monitor.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/probe.js') }}"></script>
 </body>
 </html>

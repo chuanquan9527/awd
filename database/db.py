@@ -137,39 +137,6 @@ def init_db():
     except:
         cursor.execute('ALTER TABLE monitor_config ADD COLUMN whitelist TEXT')
 
-    # traffic_rules 表 - 流量监控正则规则
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS traffic_rules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            server_id INTEGER DEFAULT 0,
-            rule_name TEXT NOT NULL,
-            pattern TEXT NOT NULL,
-            severity TEXT DEFAULT 'warning',
-            enabled INTEGER DEFAULT 1,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
-    # traffic_alerts 表 - 流量告警记录
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS traffic_alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            server_id INTEGER NOT NULL,
-            rule_id INTEGER,
-            matched_pattern TEXT,
-            source_ip TEXT,
-            request_method TEXT,
-            request_uri TEXT,
-            request_body TEXT,
-            matched_content TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
-            FOREIGN KEY (rule_id) REFERENCES traffic_rules(id) ON DELETE SET NULL
-        )
-    ''')
-
     conn.commit()
     conn.close()
 
