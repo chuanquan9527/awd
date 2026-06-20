@@ -642,6 +642,10 @@ function showServerDetail(serverId) {
                 <div class="detail-item"><span class="detail-label">Web根目录:</span><span class="detail-value">${escapeHtml(server.web_root)}</span></div>
             </div>
             <div style="margin-top:0.5rem;">${webRootBadge} ${mysqlBadge}</div>
+            <div style="margin-top:1rem;display:flex;gap:0.5rem;">
+                <button class="btn btn-sm btn-secondary" onclick="showSSHPasswordModal(${server.id}, '${escapeHtml(server.username)}')">修改SSH密码</button>
+                <button class="btn btn-sm btn-secondary" onclick="showMySQLPasswordModal(${server.id}, '${escapeHtml(server.db_user || 'root')}')">修改MySQL密码</button>
+            </div>
         `
     });
 
@@ -1335,6 +1339,240 @@ function escapeHtml(text) {
 function getSeverityText(severity) {
     const map = { 'critical': '严重', 'warning': '警告', 'info': '信息' };
     return map[severity] || severity;
+}
+
+// ==================== 密码修改 ====================
+function validatePasswordStrength(password) {
+    if (password.length < 12) {
+        return { valid: false, message: '密码长度至少12位' };
+    }
+    if (!/[a-z]/.test(password)) {
+        return { valid: false, message: '密码需包含小写字母' };
+    }
+    if (!/[A-Z]/.test(password)) {
+        return { valid: false, message: '密码需包含大写字母' };
+    }
+    if (!/\d/.test(password)) {
+        return { valid: false, message: '密码需包含数字' };
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+        return { valid: false, message: '密码需包含特殊字符' };
+    }
+    return { valid: true, message: '' };
+}
+
+function showSSHPasswordModal(serverId, username) {
+    const formHtml = `
+        <div class="form-group">
+            <label>当前用户</label>
+            <input type="text" value="${escapeHtml(username)}" readonly style="background:var(--bg-secondary);">
+        </div>
+        <div class="form-group">
+            <label>新密码 *</label>
+            <input type="password" id="newSSHPassword" placeholder="至少12位，含大小写字母、数字、特殊字符">
+        </div>
+        <div class="form-group">
+            <label>确认密码 *</label>
+            <input type="password" id="confirmSSHPassword" placeholder="再次输入新密码">
+        </div>
+        <div id="sshPasswordProgress" style="display:none;margin-top:1rem;">
+            <div style="font-size:0.85rem;color:var(--text-secondary);">
+                <div id="sshProgressStep1">⏳ 正在连接服务器...</div>
+                <div id="sshProgressStep2" style="display:none;">⏳ 正在验证旧密码...</div>
+                <div id="sshProgressStep3" style="display:none;">⏳ 正在修改密码...</div>
+                <div id="sshProgressStep4" style="display:none;">⏳ 正在验证新密码...</div>
+            </div>
+        </div>
+        <div id="sshPasswordError" style="color:var(--accent-red);font-size:0.85rem;display:none;"></div>
+        <div id="sshPasswordSuccess" style="color:var(--accent-green);font-size:0.85rem;display:none;"></div>
+    `;
+    
+    showModal('修改SSH密码', formHtml, [
+        { text: '取消', class: 'btn-secondary', action: hideModal },
+        { text: '确认修改', class: 'btn-primary', action: () => doChangeSSHPassword(serverId) }
+    ]);
+}
+
+async function doChangeSSHPassword(serverId) {
+    const newPassword = document.getElementById('newSSHPassword').value;
+    const confirmPassword = document.getElementById('confirmSSHPassword').value;
+    const errorDiv = document.getElementById('sshPasswordError');
+    const successDiv = document.getElementById('sshPasswordSuccess');
+    const progressDiv = document.getElementById('sshPasswordProgress');
+    
+    // 校验
+    const validation = validatePasswordStrength(newPassword);
+    if (!validation.valid) {
+        errorDiv.textContent = validation.message;
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        errorDiv.textContent = '两次输入的密码不一致';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    // 显示进度
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+    progressDiv.style.display = 'block';
+    
+    // 禁用按钮
+    const modalButtons = document.querySelectorAll('.modal-footer .btn');
+    modalButtons.forEach(btn => btn.disabled = true);
+    
+    try {
+        // 步骤1: 连接服务器
+        document.getElementById('sshProgressStep1').style.display = 'block';
+        
+        // 调用API
+        const result = await apiRequest(`/api/servers/${serverId}/password/ssh`, {
+            method: 'POST',
+            body: { new_password: newPassword }
+        });
+        
+        // 更新进度显示
+        if (result && result.progress) {
+            result.progress.forEach(step => {
+                const stepDiv = document.getElementById(`sshProgressStep${step.num}`);
+                if (stepDiv) {
+                    stepDiv.style.display = 'block';
+                    stepDiv.textContent = step.success ? `✅ ${step.text}` : `❌ ${step.text}`;
+                }
+            });
+        }
+        
+        if (result && result.success) {
+            successDiv.textContent = '✅ SSH密码修改成功！';
+            successDiv.style.display = 'block';
+            progressDiv.style.display = 'none';
+            
+            // 2秒后关闭模态框
+            setTimeout(() => {
+                hideModal();
+                loadServers();
+            }, 1500);
+        } else {
+            errorDiv.textContent = result ? result.message : '修改失败';
+            errorDiv.style.display = 'block';
+            progressDiv.style.display = 'none';
+            modalButtons.forEach(btn => btn.disabled = false);
+        }
+    } catch (e) {
+        errorDiv.textContent = '请求失败: ' + e.message;
+        errorDiv.style.display = 'block';
+        progressDiv.style.display = 'none';
+        modalButtons.forEach(btn => btn.disabled = false);
+    }
+}
+
+function showMySQLPasswordModal(serverId, dbUser) {
+    const formHtml = `
+        <div class="form-group">
+            <label>数据库用户</label>
+            <input type="text" value="${escapeHtml(dbUser)}" readonly style="background:var(--bg-secondary);">
+        </div>
+        <div class="form-group">
+            <label>新密码 *</label>
+            <input type="password" id="newMySQLPassword" placeholder="至少12位，含大小写字母、数字、特殊字符">
+        </div>
+        <div class="form-group">
+            <label>确认密码 *</label>
+            <input type="password" id="confirmMySQLPassword" placeholder="再次输入新密码">
+        </div>
+        <div id="mysqlPasswordProgress" style="display:none;margin-top:1rem;">
+            <div style="font-size:0.85rem;color:var(--text-secondary);">
+                <div id="mysqlProgressStep1">⏳ 正在连接服务器...</div>
+                <div id="mysqlProgressStep2" style="display:none;">⏳ 正在连接MySQL...</div>
+                <div id="mysqlProgressStep3" style="display:none;">⏳ 正在修改密码...</div>
+                <div id="mysqlProgressStep4" style="display:none;">⏳ 正在验证新密码...</div>
+            </div>
+        </div>
+        <div id="mysqlPasswordError" style="color:var(--accent-red);font-size:0.85rem;display:none;"></div>
+        <div id="mysqlPasswordSuccess" style="color:var(--accent-green);font-size:0.85rem;display:none;"></div>
+    `;
+    
+    showModal('修改MySQL密码', formHtml, [
+        { text: '取消', class: 'btn-secondary', action: hideModal },
+        { text: '确认修改', class: 'btn-primary', action: () => doChangeMySQLPassword(serverId) }
+    ]);
+}
+
+async function doChangeMySQLPassword(serverId) {
+    const newPassword = document.getElementById('newMySQLPassword').value;
+    const confirmPassword = document.getElementById('confirmMySQLPassword').value;
+    const errorDiv = document.getElementById('mysqlPasswordError');
+    const successDiv = document.getElementById('mysqlPasswordSuccess');
+    const progressDiv = document.getElementById('mysqlPasswordProgress');
+    
+    // 校验
+    const validation = validatePasswordStrength(newPassword);
+    if (!validation.valid) {
+        errorDiv.textContent = validation.message;
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        errorDiv.textContent = '两次输入的密码不一致';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    // 显示进度
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+    progressDiv.style.display = 'block';
+    
+    // 禁用按钮
+    const modalButtons = document.querySelectorAll('.modal-footer .btn');
+    modalButtons.forEach(btn => btn.disabled = true);
+    
+    try {
+        // 步骤1: 连接服务器
+        document.getElementById('mysqlProgressStep1').style.display = 'block';
+        
+        // 调用API
+        const result = await apiRequest(`/api/servers/${serverId}/password/mysql`, {
+            method: 'POST',
+            body: { new_password: newPassword }
+        });
+        
+        // 更新进度显示
+        if (result && result.progress) {
+            result.progress.forEach(step => {
+                const stepDiv = document.getElementById(`mysqlProgressStep${step.num}`);
+                if (stepDiv) {
+                    stepDiv.style.display = 'block';
+                    stepDiv.textContent = step.success ? `✅ ${step.text}` : `❌ ${step.text}`;
+                }
+            });
+        }
+        
+        if (result && result.success) {
+            successDiv.textContent = '✅ MySQL密码修改成功！';
+            successDiv.style.display = 'block';
+            progressDiv.style.display = 'none';
+            
+            // 1.5秒后关闭模态框
+            setTimeout(() => {
+                hideModal();
+                loadServers();
+            }, 1500);
+        } else {
+            errorDiv.textContent = result ? result.message : '修改失败';
+            errorDiv.style.display = 'block';
+            progressDiv.style.display = 'none';
+            modalButtons.forEach(btn => btn.disabled = false);
+        }
+    } catch (e) {
+        errorDiv.textContent = '请求失败: ' + e.message;
+        errorDiv.style.display = 'block';
+        progressDiv.style.display = 'none';
+        modalButtons.forEach(btn => btn.disabled = false);
+    }
 }
 
 // ==================== 初始化 ====================

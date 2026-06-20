@@ -171,3 +171,17 @@ class SSHManager:
         """关闭所有连接"""
         for server_id in list(self._connections.keys()):
             self.close_connection(server_id)
+
+    def get_raw_client(self, server_id):
+        """获取原始SSHClient对象（用于invoke_shell等高级操作）"""
+        with self._get_lock(server_id):
+            if server_id not in self._connections:
+                return None
+            # 检查连接是否有效
+            try:
+                transport = self._connections[server_id].get_transport()
+                if transport and transport.is_active():
+                    return self._connections[server_id]
+            except:
+                pass
+            return None

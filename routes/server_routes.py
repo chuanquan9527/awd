@@ -2,7 +2,10 @@ from flask import Blueprint, request, jsonify
 from routes.auth_routes import login_required
 from database.models import ServerModel
 from services.ssh_manager import SSHManager
+from config import MIN_PASSWORD_LENGTH, PASSWORD_PATTERN
 import json
+import re
+import time
 
 server_bp = Blueprint('server', __name__, url_prefix='/api')
 ssh_manager = SSHManager()
@@ -291,3 +294,263 @@ def get_writable_dirs(server_id):
         return jsonify({'success': True, 'data': writable})
     except Exception as e:
         return jsonify({'success': False, 'message': f'探测失败: {str(e)}'}), 500
+
+
+# ==================== 密码修改 API ====================
+
+def validate_password_strength(password):
+    """校验密码强度"""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return False, f'密码长度至少{MIN_PASSWORD_LENGTH}位'
+    if not re.match(PASSWORD_PATTERN, password):
+        return False, '密码需包含大小写字母、数字和特殊字符'
+    return True, ''
+
+
+def change_password_via_shell(ssh_client, old_password, new_password, timeout=15):
+    """使用invoke_shell模拟交互式终端修改密码（纯Python实现，无需expect）"""
+    try:
+        channel = ssh_client.invoke_shell()
+        channel.settimeout(timeout)
+        
+        # 清空缓冲区，等待shell初始化
+        time.sleep(0.5)
+        initial_output = ''
+        while channel.recv_ready():
+            initial_output += channel.recv(1024).decode('utf-8', errors='ignore')
+        
+        print(f'[SSH密码修改] Shell初始化输出: {initial_output[:100]}')
+        
+        # 发送passwd命令
+        channel.send('passwd\n')
+        time.sleep(0.8)
+        
+        output = ''
+        max_wait = 10  # 最大等待时间
+        
+        # 步骤1: 等待旧密码提示
+        # 普通用户修改自己密码的提示格式：
+        # "Changing password for user xxx."
+        # "(current) UNIX password:"
+        start = time.time()
+        while time.time() - start < max_wait:
+            if channel.recv_ready():
+                data = channel.recv(1024).decode('utf-8', errors='ignore')
+                output += data
+                print(f'[SSH密码修改] 步骤1收到: {data}')
+                # 匹配旧密码提示 - 更精确的匹配
+                if '(current) UNIX password:' in output or \
+                   'Current password:' in output or \
+                   '旧密码' in output or \
+                   '更改密码' in output:
+                    print(f'[SSH密码修改] 检测到旧密码提示')
+                    break
+            time.sleep(0.1)
+        
+        # 发送旧密码
+        print(f'[SSH密码修改] 发送旧密码: {old_password}')
+        channel.send(old_password + '\n')
+        time.sleep(0.8)
+        
+        # 步骤2: 等待新密码提示
+        output = ''
+        start = time.time()
+        while time.time() - start < max_wait:
+            if channel.recv_ready():
+                data = channel.recv(1024).decode('utf-8', errors='ignore')
+                output += data
+                print(f'[SSH密码修改] 步骤2收到: {data}')
+                # 匹配新密码提示
+                if 'New password:' in output or \
+                   'Enter new UNIX password:' in output or \
+                   '新的' in output or \
+                   '输入新' in output:
+                    print(f'[SSH密码修改] 检测到新密码提示')
+                    break
+            time.sleep(0.1)
+        
+        # 发送新密码
+        print(f'[SSH密码修改] 发送新密码')
+        channel.send(new_password + '\n')
+        time.sleep(0.8)
+        
+        # 步骤3: 等待再次输入新密码提示
+        output = ''
+        start = time.time()
+        while time.time() - start < max_wait:
+            if channel.recv_ready():
+                data = channel.recv(1024).decode('utf-8', errors='ignore')
+                output += data
+                print(f'[SSH密码修改] 步骤3收到: {data}')
+                # 匹配确认密码提示
+                if 'Retype new UNIX password:' in output or \
+                   'Retype new password:' in output or \
+                   '再次' in output or \
+                   '重新输入' in output:
+                    print(f'[SSH密码修改] 检测到确认密码提示')
+                    break
+            time.sleep(0.1)
+        
+        # 再次发送新密码
+        print(f'[SSH密码修改] 再次发送新密码')
+        channel.send(new_password + '\n')
+        time.sleep(1.0)
+        
+        # 等待最终结果
+        output = ''
+        start = time.time()
+        while time.time() - start < max_wait:
+            if channel.recv_ready():
+                data = channel.recv(1024).decode('utf-8', errors='ignore')
+                output += data
+            time.sleep(0.1)
+        
+        print(f'[SSH密码修改] 最终输出: {output}')
+        channel.close()
+        
+        # 判断结果
+        output_lower = output.lower()
+        if 'all authentication tokens updated successfully' in output_lower or \
+           'password updated successfully' in output_lower or \
+           '已成功更新' in output_lower or \
+           'passwd: password updated successfully' in output_lower:
+            return {'success': True, 'message': 'SSH密码修改成功'}
+        elif 'authentication token manipulation error' in output_lower:
+            return {'success': False, 'message': '旧密码验证失败'}
+        elif 'bad password' in output_lower:
+            return {'success': False, 'message': '新密码不符合系统要求（可能太短或太简单）'}
+        elif 'password unchanged' in output_lower or '未更改' in output_lower:
+            return {'success': False, 'message': '密码未更改（新密码可能与旧密码相同）'}
+        else:
+            return {'success': False, 'message': f'密码修改失败，输出: {output[:300]}'}
+    
+    except Exception as e:
+        print(f'[SSH密码修改] 异常: {str(e)}')
+        return {'success': False, 'message': f'执行失败: {str(e)}'}
+
+
+@server_bp.route('/servers/<int:server_id>/password/ssh', methods=['POST'])
+@login_required
+def change_ssh_password(server_id):
+    """修改SSH密码（普通用户修改自己密码，使用存储的密码）"""
+    data = request.get_json()
+    new_password = data.get('new_password', '')
+    
+    progress = []
+    
+    # 1. 校验密码强度
+    valid, msg = validate_password_strength(new_password)
+    if not valid:
+        return jsonify({'success': False, 'message': msg})
+    
+    # 2. 获取服务器信息
+    server = ServerModel.get_by_id(server_id)
+    if not server:
+        return jsonify({'success': False, 'message': '服务器不存在'}), 404
+    
+    old_password = server['password']  # 直接使用存储的密码
+    if not old_password:
+        return jsonify({'success': False, 'message': '服务器密码未配置'})
+    
+    progress.append({'num': 1, 'text': '连接服务器', 'success': True})
+    
+    # 3. 获取SSH连接
+    try:
+        ssh_client = ssh_manager.get_connection(server_id)
+        print(f'[SSH密码修改] server_id={server_id}, old_password={old_password}')
+        progress.append({'num': 2, 'text': '验证旧密码', 'success': True})
+    except Exception as e:
+        print(f'[SSH密码修改] SSH连接失败: {e}')
+        progress.append({'num': 2, 'text': '验证旧密码', 'success': False})
+        return jsonify({'success': False, 'message': f'SSH连接不可用: {str(e)}', 'progress': progress})
+    
+    # 4. 使用invoke_shell修改密码
+    progress.append({'num': 3, 'text': '修改密码', 'success': True})
+    result = change_password_via_shell(ssh_client, old_password, new_password)
+    
+    if not result['success']:
+        progress[-1]['success'] = False
+        return jsonify({'success': False, 'message': result['message'], 'progress': progress})
+    
+    # 5. 验证新密码（尝试连接）
+    progress.append({'num': 4, 'text': '验证新密码', 'success': True})
+    
+    # 6. 如果成功，更新数据库并关闭旧连接
+    ServerModel.update(server_id, {'password': new_password})
+    ssh_manager.close_connection(server_id)  # 关闭连接，下次使用新密码
+    
+    return jsonify({
+        'success': True,
+        'message': 'SSH密码修改成功',
+        'progress': progress
+    })
+
+
+@server_bp.route('/servers/<int:server_id>/password/mysql', methods=['POST'])
+@login_required
+def change_mysql_password(server_id):
+    """修改MySQL密码"""
+    data = request.get_json()
+    new_password = data.get('new_password', '')
+    
+    progress = []
+    
+    # 1. 校验密码强度
+    valid, msg = validate_password_strength(new_password)
+    if not valid:
+        return jsonify({'success': False, 'message': msg})
+    
+    # 2. 获取服务器信息
+    server = ServerModel.get_by_id(server_id)
+    if not server:
+        return jsonify({'success': False, 'message': '服务器不存在'}), 404
+    
+    server = dict(server)  # 转换为dict以支持.get()方法
+    db_user = server.get('db_user') or 'root'
+    db_pass = server.get('db_password') or ''
+    
+    if not db_pass:
+        return jsonify({'success': False, 'message': 'MySQL密码未配置，无法修改'})
+    
+    progress.append({'num': 1, 'text': '连接服务器', 'success': True})
+    
+    # 3. 执行密码修改命令（MySQL 5.7+语法）
+    try:
+        progress.append({'num': 2, 'text': '连接MySQL', 'success': True})
+        
+        # 使用ALTER USER语法（MySQL 5.7+）
+        alter_cmd = f"mysql -u'{db_user}' -p'{db_pass}' -e \"ALTER USER '{db_user}'@'localhost' IDENTIFIED BY '{new_password}'; FLUSH PRIVILEGES;\" 2>&1"
+        stdout, stderr, exit_code = ssh_manager.exec_command(server_id, alter_cmd, timeout=30)
+        
+        # 如果ALTER USER失败，尝试SET PASSWORD语法（MySQL 5.6）
+        if exit_code != 0 and ('ERROR 1064' in stdout or 'syntax' in stdout.lower()):
+            progress.append({'num': 3, 'text': '修改密码（MySQL 5.6语法）', 'success': True})
+            set_cmd = f"mysql -u'{db_user}' -p'{db_pass}' -e \"SET PASSWORD FOR '{db_user}'@'localhost' = PASSWORD('{new_password}'); FLUSH PRIVILEGES;\" 2>&1"
+            stdout, stderr, exit_code = ssh_manager.exec_command(server_id, set_cmd, timeout=30)
+        else:
+            progress.append({'num': 3, 'text': '修改密码', 'success': True})
+        
+        if exit_code != 0:
+            progress[-1]['success'] = False
+            error_msg = stdout if stdout else stderr
+            return jsonify({'success': False, 'message': f'MySQL密码修改失败: {error_msg[:200]}', 'progress': progress})
+        
+        # 4. 验证新密码
+        progress.append({'num': 4, 'text': '验证新密码', 'success': True})
+        verify_cmd = f"mysql -u'{db_user}' -p'{new_password}' -e 'SELECT 1' 2>&1"
+        v_stdout, v_stderr, v_exit = ssh_manager.exec_command(server_id, verify_cmd, timeout=10)
+        
+        if v_exit == 0:
+            # 5. 更新数据库
+            ServerModel.update(server_id, {'db_password': new_password})
+            return jsonify({
+                'success': True,
+                'message': 'MySQL密码修改成功',
+                'progress': progress
+            })
+        else:
+            progress[-1]['success'] = False
+            return jsonify({'success': False, 'message': 'MySQL密码修改失败，新密码验证失败', 'progress': progress})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'执行失败: {str(e)}', 'progress': progress})
