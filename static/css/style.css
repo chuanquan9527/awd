@@ -353,6 +353,100 @@ body {
     gap: 1rem;
 }
 
+/* ==================== 监控目录表格 ==================== */
+.watched-dirs-table {
+    width: 100%;
+}
+
+.watched-dirs-table th {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-secondary);
+}
+
+.watched-dirs-table td {
+    padding: 0.5rem 0.75rem;
+    vertical-align: top;
+}
+
+.watched-dirs-table .watched-dir-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.watched-dirs-table .watched-dir-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.watched-dirs-table .whitelist-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    resize: vertical;
+    min-height: 60px;
+    max-height: 150px;
+    transition: all 0.2s;
+    line-height: 1.4;
+}
+
+.watched-dirs-table .whitelist-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.watched-dirs-table .whitelist-input::placeholder {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.watched-dirs-table .action-cell {
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* ==================== 白名单文本框 ==================== */
+.whitelist-textarea {
+    width: 100%;
+    padding: 0.6rem 0.875rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    resize: vertical;
+    min-height: 80px;
+    transition: all 0.2s;
+    line-height: 1.5;
+}
+
+.whitelist-textarea:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.whitelist-textarea::placeholder {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
 /* ==================== 表格 ==================== */
 .table-wrap {
     overflow-x: auto;

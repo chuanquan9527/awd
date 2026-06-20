@@ -15,6 +15,10 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 # 注册蓝图
 register_blueprints(app)
 
+# 初始化监控服务的 socketio 实例
+from routes.monitor_routes import init_socketio
+init_socketio(socketio)
+
 # 初始化数据库
 init_db()
 

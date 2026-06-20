@@ -61,9 +61,24 @@ class TrafficMonitor:
 
     def stop_monitoring(self, server_id):
         """停止流量监控"""
+        # 设置停止事件
         if server_id in self._events:
             self._events[server_id].set()
-
+        
+        # 等待线程结束（最多等待5秒）
+        if server_id in self._threads:
+            thread = self._threads[server_id]
+            if thread.is_alive():
+                thread.join(timeout=5)
+            # 清理线程引用
+            if not thread.is_alive():
+                del self._threads[server_id]
+        
+        # 清理事件引用
+        if server_id in self._events:
+            del self._events[server_id]
+        
+        # 更新数据库配置
         MonitorConfigModel.create_or_update(
             server_id,
             traffic_monitor_enabled=0
@@ -180,18 +195,20 @@ class TrafficMonitor:
             })
         )
 
-        self.socketio.emit('alert', {
-            'type': 'traffic_rule',
-            'severity': rule['severity'],
-            'server_id': server_id,
-            'server_name': server_name,
-            'message': f'[{rule["rule_name"]}] {parsed.get("ip", "")} -> {parsed.get("method", "")} {parsed.get("uri", "")}',
-            'details': {
-                'rule_name': rule['rule_name'],
-                'source_ip': parsed.get('ip', ''),
-                'method': parsed.get('method', ''),
-                'uri': parsed.get('uri', ''),
-                'matched_content': matched_content[:200]
-            },
-            'timestamp': datetime.now().isoformat()
-        }, broadcast=True)
+        # WebSocket 推送（广播给所有客户端）
+        if self.socketio:
+            self.socketio.emit('alert', {
+                'type': 'traffic_rule',
+                'severity': rule['severity'],
+                'server_id': server_id,
+                'server_name': server_name,
+                'message': f'[{rule["rule_name"]}] {parsed.get("ip", "")} -> {parsed.get("method", "")} {parsed.get("uri", "")}',
+                'details': {
+                    'rule_name': rule['rule_name'],
+                    'source_ip': parsed.get('ip', ''),
+                    'method': parsed.get('method', ''),
+                    'uri': parsed.get('uri', ''),
+                    'matched_content': matched_content[:200]
+                },
+                'timestamp': datetime.now().isoformat()
+            })

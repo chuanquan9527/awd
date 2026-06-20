@@ -15,19 +15,85 @@ class FileMonitor:
         self.socketio = socketio
         self._threads = {}       # {server_id: threading.Thread}
         self._events = {}        # {server_id: threading.Event}
+        self._dir_configs = {}   # {server_id: [{dir, whitelist_patterns}]}
 
-    def build_baseline(self, server_id, directories=None):
-        """建立文件基线"""
+    def _parse_whitelist(self, whitelist_str):
+        """解析白名单字符串为正则表达式列表"""
+        if not whitelist_str:
+            return []
+        
+        patterns = []
+        for line in whitelist_str.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                pattern = re.compile(line)
+                patterns.append(pattern)
+            except re.error as e:
+                print(f'[文件监控] 白名单正则表达式错误: {line}, 错误: {e}')
+        return patterns
+
+    def _is_whitelisted(self, file_path, patterns):
+        """检查文件路径是否匹配白名单"""
+        for pattern in patterns:
+            if pattern.search(file_path):
+                return True
+        return False
+
+    def _get_whitelist_for_file(self, file_path, dir_configs):
+        """根据文件路径获取对应的白名单"""
+        for config in dir_configs:
+            dir_path = config.get('dir', '')
+            patterns = config.get('whitelist_patterns', [])
+            # 检查文件是否属于该目录
+            if file_path.startswith(dir_path):
+                return patterns
+        return []
+
+    def build_baseline(self, server_id, dir_configs=None):
+        """建立文件基线
+        
+        Args:
+            server_id: 服务器ID
+            dir_configs: 目录配置列表，格式为 [{dir: '/path', whitelist: 'regex patterns'}]
+        """
         server = ServerModel.get_by_id(server_id)
         if not server:
             raise Exception('服务器不存在')
 
-        if not directories:
-            directories = [server['web_root']]
+        # 处理目录配置
+        if not dir_configs:
+            dir_configs = [{'dir': server['web_root'], 'whitelist': ''}]
+        
+        # 确保格式正确
+        if isinstance(dir_configs, list) and len(dir_configs) > 0:
+            if isinstance(dir_configs[0], str):
+                # 旧格式转换
+                dir_configs = [{'dir': d, 'whitelist': ''} for d in dir_configs]
+        
+        # 解析每个目录的白名单
+        processed_configs = []
+        for config in dir_configs:
+            dir_path = config.get('dir', '')
+            whitelist_str = config.get('whitelist', '')
+            patterns = self._parse_whitelist(whitelist_str)
+            processed_configs.append({
+                'dir': dir_path,
+                'whitelist': whitelist_str,
+                'whitelist_patterns': patterns
+            })
+        
+        # 保存到内存
+        self._dir_configs[server_id] = processed_configs
+        
+        # 获取所有目录
+        directories = [c['dir'] for c in processed_configs if c['dir']]
 
         # 在服务器上计算所有文件的 MD5
+        # 使用 -L 参数跟随符号链接，解决 /var/www/html -> /app 等符号链接问题
         find_cmd = ' '.join([f"'{d}'" for d in directories])
-        cmd = f"find {find_cmd} -type f -exec md5sum {{}} \\; 2>/dev/null"
+        cmd = f"find -L {find_cmd} -type f -exec md5sum {{}} \\; 2>/dev/null"
         stdout, stderr, code = self.ssh.exec_command(server_id, cmd, timeout=120)
 
         if code != 0 and not stdout:
@@ -35,6 +101,7 @@ class FileMonitor:
 
         # 解析 md5sum 输出: "hash  filepath"
         file_hashes = {}
+        whitelisted_count = 0
         for line in stdout.split('\n'):
             line = line.strip()
             if not line:
@@ -42,6 +109,11 @@ class FileMonitor:
             parts = line.split(None, 1)
             if len(parts) == 2:
                 md5_hash, file_path = parts
+                # 根据文件所在目录获取对应的白名单
+                patterns = self._get_whitelist_for_file(file_path, processed_configs)
+                if patterns and self._is_whitelisted(file_path, patterns):
+                    whitelisted_count += 1
+                    continue
                 file_hashes[file_path] = md5_hash
 
         # 存入数据库
@@ -57,30 +129,69 @@ class FileMonitor:
                 )
             conn.commit()
 
-        # 更新监控配置
+        # 更新监控配置（使用新格式）
+        # 保存为 [{dir, whitelist}] 格式
+        save_configs = [{'dir': c['dir'], 'whitelist': c['whitelist']} for c in processed_configs]
         MonitorConfigModel.create_or_update(
             server_id,
-            watched_dirs=json.dumps(directories)
+            watched_dirs=json.dumps(save_configs)
         )
 
         return {
             'success': True,
-            'message': f'基线建立完成，共 {len(file_hashes)} 个文件',
-            'file_count': len(file_hashes)
+            'message': f'基线建立完成，共 {len(file_hashes)} 个文件（白名单过滤 {whitelisted_count} 个）',
+            'file_count': len(file_hashes),
+            'whitelisted_count': whitelisted_count
         }
 
-    def start_monitoring(self, server_id, interval=MONITOR_DEFAULT_INTERVAL):
-        """启动文件监控"""
+    def start_monitoring(self, server_id, interval=MONITOR_DEFAULT_INTERVAL, dir_configs=None):
+        """启动文件监控
+        
+        Args:
+            server_id: 服务器ID
+            interval: 监控间隔
+            dir_configs: 目录配置列表，格式为 [{dir: '/path', whitelist: 'regex patterns'}]
+        """
         if server_id in self._threads and self._threads[server_id].is_alive():
             return {'success': False, 'message': '监控已在运行中'}
 
         interval = max(MONITOR_MIN_INTERVAL, min(interval, 300))
 
+        # 获取服务器信息，用于默认目录
+        server = ServerModel.get_by_id(server_id)
+        
+        # 处理目录配置
+        if not dir_configs:
+            dir_configs = [{'dir': server['web_root'] if server else '/var/www/html', 'whitelist': ''}]
+        
+        # 确保格式正确
+        if isinstance(dir_configs, list) and len(dir_configs) > 0:
+            if isinstance(dir_configs[0], str):
+                # 旧格式转换
+                dir_configs = [{'dir': d, 'whitelist': ''} for d in dir_configs]
+        
+        # 解析每个目录的白名单
+        processed_configs = []
+        for config in dir_configs:
+            dir_path = config.get('dir', '')
+            whitelist_str = config.get('whitelist', '')
+            patterns = self._parse_whitelist(whitelist_str)
+            processed_configs.append({
+                'dir': dir_path,
+                'whitelist': whitelist_str,
+                'whitelist_patterns': patterns
+            })
+        
+        # 保存到内存
+        self._dir_configs[server_id] = processed_configs
+        
         # 更新监控配置
+        save_configs = [{'dir': c['dir'], 'whitelist': c['whitelist']} for c in processed_configs]
         MonitorConfigModel.create_or_update(
             server_id,
             file_monitor_enabled=1,
-            monitor_interval=interval
+            monitor_interval=interval,
+            watched_dirs=json.dumps(save_configs)
         )
 
         # 创建停止事件
@@ -99,9 +210,28 @@ class FileMonitor:
 
     def stop_monitoring(self, server_id):
         """停止文件监控"""
+        # 设置停止事件
         if server_id in self._events:
             self._events[server_id].set()
-
+        
+        # 等待线程结束（最多等待5秒）
+        if server_id in self._threads:
+            thread = self._threads[server_id]
+            if thread.is_alive():
+                thread.join(timeout=5)
+            # 清理线程引用
+            if not thread.is_alive():
+                del self._threads[server_id]
+        
+        # 清理事件引用
+        if server_id in self._events:
+            del self._events[server_id]
+        
+        # 清理目录配置
+        if server_id in self._dir_configs:
+            del self._dir_configs[server_id]
+        
+        # 更新数据库配置
         MonitorConfigModel.create_or_update(
             server_id,
             file_monitor_enabled=0
@@ -125,12 +255,49 @@ class FileMonitor:
         if not server:
             return []
 
-        config = MonitorConfigModel.get_by_server(server_id)
-        directories = json.loads(config['watched_dirs']) if config and config['watched_dirs'] else [server['web_root']]
+        # 获取目录配置（优先使用内存中的，否则从配置解析）
+        dir_configs = self._dir_configs.get(server_id)
+        if dir_configs is None:
+            config = MonitorConfigModel.get_by_server(server_id)
+            if config and config['watched_dirs']:
+                try:
+                    saved_configs = json.loads(config['watched_dirs'])
+                    # 解析配置
+                    dir_configs = []
+                    if saved_configs and len(saved_configs) > 0:
+                        if isinstance(saved_configs[0], str):
+                            # 旧格式转换
+                            for d in saved_configs:
+                                dir_configs.append({
+                                    'dir': d,
+                                    'whitelist': '',
+                                    'whitelist_patterns': []
+                                })
+                        else:
+                            # 新格式
+                            for c in saved_configs:
+                                patterns = self._parse_whitelist(c.get('whitelist', ''))
+                                dir_configs.append({
+                                    'dir': c.get('dir', ''),
+                                    'whitelist': c.get('whitelist', ''),
+                                    'whitelist_patterns': patterns
+                                })
+                except Exception as e:
+                    print(f'[文件监控] 解析配置失败: {e}')
+                    dir_configs = [{'dir': server['web_root'], 'whitelist': '', 'whitelist_patterns': []}]
+            else:
+                dir_configs = [{'dir': server['web_root'], 'whitelist': '', 'whitelist_patterns': []}]
+            self._dir_configs[server_id] = dir_configs
+
+        # 获取所有目录
+        directories = [c['dir'] for c in dir_configs if c['dir']]
+        if not directories:
+            directories = [server['web_root']]
 
         # 获取当前文件 MD5
+        # 使用 -L 参数跟随符号链接
         find_cmd = ' '.join([f"'{d}'" for d in directories])
-        cmd = f"find {find_cmd} -type f -exec md5sum {{}} \\; 2>/dev/null"
+        cmd = f"find -L {find_cmd} -type f -exec md5sum {{}} \\; 2>/dev/null"
         stdout, _, _ = self.ssh.exec_command(server_id, cmd, timeout=120)
 
         current_hashes = {}
@@ -140,7 +307,12 @@ class FileMonitor:
                 continue
             parts = line.split(None, 1)
             if len(parts) == 2:
-                current_hashes[parts[1]] = parts[0]
+                file_path = parts[1]
+                # 根据文件所在目录获取对应的白名单
+                patterns = self._get_whitelist_for_file(file_path, dir_configs)
+                if patterns and self._is_whitelisted(file_path, patterns):
+                    continue
+                current_hashes[file_path] = parts[0]
 
         # 获取基线
         from database.db import get_db
@@ -183,9 +355,13 @@ class FileMonitor:
                 alerts.append(alert)
                 self._emit_alert(server_id, server['name'], alert)
 
-        # 检测删除文件
+        # 检测删除文件（排除白名单中的文件）
         deleted_files = baseline_paths - current_paths
         for f in deleted_files:
+            # 检查是否现在属于白名单（可能是白名单后来被更新）
+            patterns = self._get_whitelist_for_file(f, dir_configs)
+            if patterns and self._is_whitelisted(f, patterns):
+                continue
             alert = {
                 'type': 'deleted_file',
                 'path': f,
@@ -198,7 +374,29 @@ class FileMonitor:
         return alerts
 
     def _emit_alert(self, server_id, server_name, alert):
-        """发送告警"""
+        """发送告警（防止重复）"""
+        # 检查是否已存在相同的告警（同一服务器、同一文件路径、同一告警类型）
+        # 使用文件路径作为唯一标识，避免短时间内重复告警
+        file_path = alert.get('path', '')
+        alert_type = alert.get('type', '')
+        
+        from database.db import get_db
+        with get_db() as conn:
+            # 检查最近5分钟内是否已有相同告警
+            existing = conn.execute(
+                '''SELECT id FROM alerts 
+                   WHERE server_id = ? 
+                   AND alert_type = 'file_change'
+                   AND message LIKE ?
+                   AND created_at > datetime('now', '-5 minutes')
+                   LIMIT 1''',
+                [server_id, f'%{file_path}%']
+            ).fetchone()
+            
+            if existing:
+                # 已存在相同告警，跳过
+                return
+        
         # 写入数据库
         AlertModel.create(
             server_id=server_id,
@@ -208,13 +406,14 @@ class FileMonitor:
             details=json.dumps(alert)
         )
 
-        # WebSocket 推送
-        self.socketio.emit('alert', {
-            'type': 'file_change',
-            'severity': alert['severity'],
-            'server_id': server_id,
-            'server_name': server_name,
-            'message': alert['message'],
-            'details': alert,
-            'timestamp': datetime.now().isoformat()
-        }, broadcast=True)
+        # WebSocket 推送（广播给所有客户端）
+        if self.socketio:
+            self.socketio.emit('alert', {
+                'type': 'file_change',
+                'severity': alert['severity'],
+                'server_id': server_id,
+                'server_name': server_name,
+                'message': alert['message'],
+                'details': alert,
+                'timestamp': datetime.now().isoformat()
+            })

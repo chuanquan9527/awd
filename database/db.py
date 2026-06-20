@@ -125,10 +125,17 @@ def init_db():
             traffic_monitor_enabled INTEGER DEFAULT 0,
             monitor_interval INTEGER DEFAULT 5,
             watched_dirs TEXT,
+            whitelist TEXT,
             kill_on_detect INTEGER DEFAULT 0,
             FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
         )
     ''')
+    
+    # 检查是否需要添加 whitelist 字段（兼容旧数据库）
+    try:
+        cursor.execute('SELECT whitelist FROM monitor_config LIMIT 1')
+    except:
+        cursor.execute('ALTER TABLE monitor_config ADD COLUMN whitelist TEXT')
 
     # traffic_rules 表 - 流量监控正则规则
     cursor.execute('''

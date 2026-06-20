@@ -45,9 +45,24 @@ class ProcessMonitor:
 
     def stop_monitoring(self, server_id):
         """停止进程监控"""
+        # 设置停止事件
         if server_id in self._events:
             self._events[server_id].set()
-
+        
+        # 等待线程结束（最多等待5秒）
+        if server_id in self._threads:
+            thread = self._threads[server_id]
+            if thread.is_alive():
+                thread.join(timeout=5)
+            # 清理线程引用
+            if not thread.is_alive():
+                del self._threads[server_id]
+        
+        # 清理事件引用
+        if server_id in self._events:
+            del self._events[server_id]
+        
+        # 更新数据库配置
         MonitorConfigModel.create_or_update(
             server_id,
             process_monitor_enabled=0
@@ -165,12 +180,14 @@ class ProcessMonitor:
             details=json.dumps(alert)
         )
 
-        self.socketio.emit('alert', {
-            'type': 'process_anomaly',
-            'severity': alert['severity'],
-            'server_id': server_id,
-            'server_name': server_name,
-            'message': alert['message'],
-            'details': alert,
-            'timestamp': datetime.now().isoformat()
-        }, broadcast=True)
+        # WebSocket 推送（广播给所有客户端）
+        if self.socketio:
+            self.socketio.emit('alert', {
+                'type': 'process_anomaly',
+                'severity': alert['severity'],
+                'server_id': server_id,
+                'server_name': server_name,
+                'message': alert['message'],
+                'details': alert,
+                'timestamp': datetime.now().isoformat()
+            })

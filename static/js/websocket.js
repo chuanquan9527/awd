@@ -1,66 +1,75 @@
 /**
- * WebSocket 客户端 - 实时告警推送
+ * WebSocket 客户端 - 实时告警推送 (使用 Socket.IO)
  */
 
 let socket = null;
-let reconnectTimer = null;
-let alarmEnabled = true;
+
+// 使用全局变量，与 monitor.js 共享
+// 默认为 true（如果 localStorage 中没有保存值）
+// 注意：monitor.js 的 restoreAlarmState() 会在页面初始化后再次更新此值
+if (window.alarmEnabled === undefined) {
+    const savedState = localStorage.getItem('alarmEnabled');
+    window.alarmEnabled = savedState === null ? true : savedState === 'true';
+    console.log('[WebSocket] 初始化音效状态:', window.alarmEnabled, 'localStorage:', savedState);
+}
 
 function initWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${window.location.host}/socket.io/?EIO=4&transport=websocket`;
-
+    // 使用 Socket.IO 客户端连接
     try {
-        socket = new WebSocket(url);
+        socket = io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 5000,
+            reconnectionAttempts: Infinity
+        });
 
-        socket.onopen = function() {
-            console.log('[WebSocket] 已连接');
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-                reconnectTimer = null;
-            }
-        };
+        socket.on('connect', function() {
+            console.log('[WebSocket] 已连接, alarmEnabled:', window.alarmEnabled);
+        });
 
-        socket.onmessage = function(event) {
-            if (event.data === '2' || event.data === '3') return; // ping/pong
+        socket.on('disconnect', function() {
+            console.log('[WebSocket] 连接断开');
+        });
 
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'alert') {
-                    handleAlert(data.data);
-                } else if (data.type === 'probe_progress') {
-                    handleProbeProgress(data.data);
-                }
-            } catch (e) {
-                // 非 JSON 消息，忽略
-            }
-        };
+        socket.on('alert', function(alert) {
+            console.log('[WebSocket] 收到告警:', alert);
+            handleAlert(alert);
+        });
 
-        socket.onclose = function() {
-            console.log('[WebSocket] 连接断开，5秒后重连');
-            reconnectTimer = setTimeout(initWebSocket, 5000);
-        };
+        socket.on('probe_progress', function(progress) {
+            handleProbeProgress(progress);
+        });
 
-        socket.onerror = function() {
-            socket.close();
-        };
+        socket.on('connect_error', function(error) {
+            console.error('[WebSocket] 连接错误:', error);
+        });
+
     } catch (e) {
         console.error('[WebSocket] 初始化失败:', e);
-        reconnectTimer = setTimeout(initWebSocket, 5000);
     }
 }
 
 function handleAlert(alert) {
+    console.log('[WebSocket] 处理告警:', alert);
+    console.log('[WebSocket] alarmEnabled:', window.alarmEnabled, 'severity:', alert.severity);
+    
     // 更新未读计数
     AppState.unreadAlerts++;
     updateAlertBadge();
 
     // 更新状态栏
-    document.getElementById('statusAlerts').textContent = `未读告警: ${AppState.unreadAlerts}`;
+    const statusAlerts = document.getElementById('statusAlerts');
+    if (statusAlerts) {
+        statusAlerts.textContent = `未读告警: ${AppState.unreadAlerts}`;
+    }
 
-    // 播放告警音效
-    if (alarmEnabled && alert.severity === 'critical') {
+    // 播放告警音效（检查开关状态）
+    // critical 和 warning 级别都播放音效
+    if (window.alarmEnabled && (alert.severity === 'critical' || alert.severity === 'warning')) {
+        console.log('[WebSocket] 播放告警音效');
         playAlarmSound();
+    } else {
+        console.log('[WebSocket] 音效已关闭或非critical/warning告警，跳过播放');
     }
 
     // 如果在监控告警页面，添加到告警列表

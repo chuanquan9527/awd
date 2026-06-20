@@ -241,8 +241,8 @@ class MonitorConfigModel:
             execute_db('''
                 INSERT INTO monitor_config (server_id, file_monitor_enabled,
                     process_monitor_enabled, traffic_monitor_enabled, monitor_interval,
-                    watched_dirs, kill_on_detect)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    watched_dirs, whitelist, kill_on_detect)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', [
                 server_id,
                 kwargs.get('file_monitor_enabled', 0),
@@ -250,6 +250,7 @@ class MonitorConfigModel:
                 kwargs.get('traffic_monitor_enabled', 0),
                 kwargs.get('monitor_interval', 5),
                 kwargs.get('watched_dirs', '[]'),
+                kwargs.get('whitelist', ''),
                 kwargs.get('kill_on_detect', 0)
             ])
 

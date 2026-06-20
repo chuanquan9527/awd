@@ -161,9 +161,11 @@
 
     <!-- 告警音效 -->
     <audio id="alarmSound" preload="auto">
-        <source src="{{ url_for('static', filename='audio/alarm.mp3') }}" type="audio/mpeg">
+        <source src="{{ url_for('static', filename='audio/alarm.wav') }}" type="audio/wav">
     </audio>
 
+    <!-- Socket.IO 客户端库 -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
     <script src="{{ url_for('static', filename='js/backup.js') }}"></script>

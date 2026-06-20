@@ -1461,7 +1461,16 @@ function updateStatusBar() {
 function playAlarmSound() {
     const audio = document.getElementById('alarmSound');
     if (audio) {
-        audio.play().catch(() => {});
+        console.log('[告警] 播放音效, audio元素:', audio);
+        // 重置播放位置并播放
+        audio.currentTime = 0;
+        audio.play().then(() => {
+            console.log('[告警] 音效播放成功');
+        }).catch((e) => {
+            console.error('[告警] 音效播放失败:', e);
+        });
+    } else {
+        console.error('[告警] 未找到audio元素');
     }
 }
 
