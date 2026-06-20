@@ -323,22 +323,86 @@ async function loadProcessList() {
         return;
     }
 
+    // 提取所有用户列表
+    const users = [...new Set(processes.map(p => p.user))].sort();
+    
+    // 存储进程数据到全局变量，用于过滤和排序
+    AppState.processes = processes;
+    AppState.processUsers = users;
+    AppState.processSortField = null;
+    AppState.processSortOrder = 'desc';
+    AppState.processFilterUser = '';
+
+    renderProcessTable();
+}
+
+// 渲染进程表格（支持过滤和排序）
+function renderProcessTable() {
+    const container = document.getElementById('processListContainer');
+    const processes = AppState.processes || [];
+    const users = AppState.processUsers || [];
+    
+    // 应用用户过滤
+    let filteredProcesses = processes;
+    if (AppState.processFilterUser) {
+        filteredProcesses = processes.filter(p => p.user === AppState.processFilterUser);
+    }
+    
+    // 应用排序
+    if (AppState.processSortField) {
+        filteredProcesses = filteredProcesses.sort((a, b) => {
+            const valA = parseFloat(a[AppState.processSortField]) || 0;
+            const valB = parseFloat(b[AppState.processSortField]) || 0;
+            return AppState.processSortOrder === 'desc' ? valB - valA : valA - valB;
+        });
+    }
+
+    const serverId = document.getElementById('processServerSelect').value;
+    
+    // 排序按钮图标
+    const getSortIcon = (field) => {
+        if (AppState.processSortField !== field) return '↕';
+        return AppState.processSortOrder === 'desc' ? '↓' : '↑';
+    };
+    
+    const getSortClass = (field) => {
+        if (AppState.processSortField !== field) return '';
+        return AppState.processSortOrder === 'desc' ? 'sort-desc' : 'sort-asc';
+    };
+
     container.innerHTML = `
+        <div class="process-filter-bar" style="display:flex;gap:1rem;margin-bottom:0.75rem;align-items:center;flex-wrap:wrap;">
+            <div class="form-group" style="flex:0 0 auto;">
+                <label style="font-size:0.8rem;color:var(--text-secondary);margin-right:0.5rem;">用户过滤:</label>
+                <select id="processUserFilter" onchange="filterProcessByUser(this.value)" style="padding:0.4rem 0.6rem;">
+                    <option value="">全部用户</option>
+                    ${users.map(u => `<option value="${escapeHtml(u)}" ${AppState.processFilterUser === u ? 'selected' : ''}>${escapeHtml(u)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="process-count" style="font-size:0.85rem;color:var(--text-secondary);">
+                共 ${filteredProcesses.length} 个进程 ${AppState.processFilterUser ? `(用户: ${escapeHtml(AppState.processFilterUser)})` : ''}
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="refreshProcessList()" title="刷新进程列表">🔄 刷新</button>
+        </div>
         <div class="table-wrap" style="max-height:500px;">
             <table>
                 <thead>
                     <tr>
                         <th>PID</th>
                         <th>用户</th>
-                        <th>CPU%</th>
-                        <th>MEM%</th>
+                        <th class="sortable ${getSortClass('cpu')}" onclick="sortProcessBy('cpu')" style="cursor:pointer;">
+                            CPU% <span class="sort-icon">${getSortIcon('cpu')}</span>
+                        </th>
+                        <th class="sortable ${getSortClass('mem')}" onclick="sortProcessBy('mem')" style="cursor:pointer;">
+                            MEM% <span class="sort-icon">${getSortIcon('mem')}</span>
+                        </th>
                         <th>状态</th>
                         <th>命令</th>
                         <th>操作</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${processes.map(p => `
+                    ${filteredProcesses.map(p => `
                         <tr style="${p.suspicious ? 'background:rgba(239,68,68,0.1);' : ''}">
                             <td>${escapeHtml(p.pid)}</td>
                             <td>${escapeHtml(p.user)}</td>
@@ -356,6 +420,55 @@ async function loadProcessList() {
             </table>
         </div>
     `;
+}
+
+// 用户过滤
+function filterProcessByUser(user) {
+    AppState.processFilterUser = user;
+    renderProcessTable();
+}
+
+// 排序
+function sortProcessBy(field) {
+    if (AppState.processSortField === field) {
+        // 切换排序方向
+        AppState.processSortOrder = AppState.processSortOrder === 'desc' ? 'asc' : 'desc';
+    } else {
+        // 新字段，默认降序
+        AppState.processSortField = field;
+        AppState.processSortOrder = 'desc';
+    }
+    renderProcessTable();
+}
+
+// 刷新进程列表（保持当前过滤和排序状态）
+async function refreshProcessList() {
+    const serverId = document.getElementById('processServerSelect').value;
+    if (!serverId) return;
+    
+    const container = document.getElementById('processListContainer');
+    container.innerHTML = '<p style="color:var(--text-muted);text-align:center;">刷新中...</p>';
+    
+    const result = await apiRequest(`/api/servers/${serverId}/processes`);
+    if (!result || !result.success) {
+        container.innerHTML = '<p class="placeholder-text">获取进程列表失败</p>';
+        return;
+    }
+    
+    const processes = result.data || [];
+    if (processes.length === 0) {
+        container.innerHTML = '<p class="placeholder-text">无进程数据</p>';
+        return;
+    }
+    
+    // 提取所有用户列表
+    const users = [...new Set(processes.map(p => p.user))].sort();
+    
+    // 更新进程数据，保持过滤和排序状态
+    AppState.processes = processes;
+    AppState.processUsers = users;
+    
+    renderProcessTable();
 }
 
 async function doBuildBaseline() {

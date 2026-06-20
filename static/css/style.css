@@ -447,6 +447,37 @@ body {
     font-size: 0.8rem;
 }
 
+/* ==================== 进程表格排序 ==================== */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.sortable:hover {
+    background: var(--bg-hover);
+}
+
+.sort-icon {
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+    opacity: 0.6;
+}
+
+.sort-desc .sort-icon,
+.sort-asc .sort-icon {
+    opacity: 1;
+    color: var(--accent-blue);
+}
+
+.sort-desc {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.sort-asc {
+    background: rgba(59, 130, 246, 0.1);
+}
+
 /* ==================== 表格 ==================== */
 .table-wrap {
     overflow-x: auto;
