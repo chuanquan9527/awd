@@ -6,6 +6,13 @@
 function initMonitorPage() {
     const filePanel = document.getElementById('monitor-file');
     const processPanel = document.getElementById('monitor-process');
+    const server = getControlServer();
+    if (!server) {
+        filePanel.innerHTML = '<p class="placeholder-text">暂无在线控制服务器，请先在服务器管理中连接服务器</p>';
+        processPanel.innerHTML = '<p class="placeholder-text">暂无在线控制服务器，请先在服务器管理中连接服务器</p>';
+        return;
+    }
+    AppState.selectedServer = server.id;
 
     // 注意：restoreAlarmState() 必须在 HTML 生成之后调用，因为需要访问 DOM 元素
 
@@ -13,18 +20,11 @@ function initMonitorPage() {
         <div class="monitor-control">
             <div class="form-row">
                 <div class="form-group">
-                    <label>选择服务器</label>
-                    <select id="monitorServerSelect" onchange="loadMonitorServer()">
-                        <option value="">-- 请选择服务器 --</option>
-                        ${AppState.servers.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.host)})</option>`).join('')}
-                    </select>
-                </div>
-                <div class="form-group">
                     <label>监控间隔(秒)</label>
                     <input type="number" id="monitorInterval" value="5" min="2" max="300">
                 </div>
             </div>
-            <div id="watchedDirsRow" style="display:none;">
+            <div id="watchedDirsRow">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
                     <label style="font-size:0.85rem;color:var(--text-secondary);">监控目录列表</label>
                     <button class="btn btn-sm btn-success" onclick="addWatchedDirItem()" title="新增目录">➕ 新增</button>
@@ -82,18 +82,11 @@ function initMonitorPage() {
         <div class="monitor-control">
             <div class="form-row">
                 <div class="form-group">
-                    <label>选择服务器</label>
-                    <select id="processServerSelect" onchange="loadProcessList()">
-                        <option value="">-- 请选择服务器 --</option>
-                        ${AppState.servers.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.host)})</option>`).join('')}
-                    </select>
-                </div>
-                <div class="form-group">
                     <label>监控间隔(秒)</label>
                     <input type="number" id="processMonitorInterval" value="5" min="2" max="300">
                 </div>
             </div>
-            <div id="processServerControls" style="display:none;">
+            <div id="processServerControls">
                 <div style="display:flex;gap:0.75rem;margin-bottom:1rem;align-items:center;">
                     <button class="btn btn-primary" onclick="doStartMonitor('process')">启动进程监控</button>
                     <button class="btn btn-danger" onclick="doStopMonitor('process')">停止监控</button>
@@ -104,28 +97,31 @@ function initMonitorPage() {
             </div>
         </div>
         <div id="processListContainer">
-            <p class="placeholder-text">请先选择服务器</p>
+            <p class="placeholder-text">正在加载当前控制服务器进程...</p>
         </div>
     `;
+
+    loadMonitorServer();
+    loadProcessList();
 }
 
 async function loadMonitorServer() {
-    const serverId = document.getElementById('monitorServerSelect').value;
+    const server = getControlServer();
+    const serverId = server ? server.id : null;
     const controls = document.getElementById('monitorServerControls');
     const dirsRow = document.getElementById('watchedDirsRow');
     
     if (!serverId) { 
-        controls.style.display = 'none'; 
-        dirsRow.style.display = 'none';
+        if (controls) controls.style.display = 'none'; 
+        if (dirsRow) dirsRow.style.display = 'none';
         return; 
     }
     
-    controls.style.display = 'block';
-    dirsRow.style.display = 'block';
-    AppState.selectedServer = parseInt(serverId);
+    if (controls) controls.style.display = 'block';
+    if (dirsRow) dirsRow.style.display = 'block';
+    AppState.selectedServer = serverId;
     
     // 从服务器信息获取 web_root 作为默认值
-    const server = AppState.servers.find(s => s.id === AppState.selectedServer);
     
     // 加载已保存的监控配置（目录和白名单）
     const configResult = await apiRequest(`/api/servers/${serverId}/monitor/status`);
@@ -298,16 +294,19 @@ function getWhitelist() {
 }
 
 async function loadProcessList() {
-    const serverId = document.getElementById('processServerSelect').value;
+    const server = getControlServer();
+    const serverId = server ? server.id : null;
     const controls = document.getElementById('processServerControls');
     const container = document.getElementById('processListContainer');
-
-    if (!serverId) {
-        controls.style.display = 'none';
-        container.innerHTML = '<p class="placeholder-text">请先选择服务器</p>';
-        return;
+    
+    if (!serverId) { 
+        if (controls) controls.style.display = 'none'; 
+        if (container) container.innerHTML = '<p class="placeholder-text">暂无在线控制服务器</p>';
+        return; 
     }
-    controls.style.display = 'block';
+    
+    if (controls) controls.style.display = 'block';
+    AppState.selectedServer = serverId;
 
     container.innerHTML = '<p style="color:var(--text-muted);text-align:center;">加载中...</p>';
 
@@ -357,7 +356,7 @@ function renderProcessTable() {
         });
     }
 
-    const serverId = document.getElementById('processServerSelect').value;
+    const serverId = AppState.selectedServer || AppState.controlServerId;
     
     // 排序按钮图标
     const getSortIcon = (field) => {
@@ -443,7 +442,7 @@ function sortProcessBy(field) {
 
 // 刷新进程列表（保持当前过滤和排序状态）
 async function refreshProcessList() {
-    const serverId = document.getElementById('processServerSelect').value;
+    const serverId = AppState.selectedServer || AppState.controlServerId;
     if (!serverId) return;
     
     const container = document.getElementById('processListContainer');
@@ -533,9 +532,9 @@ async function doBuildBaseline() {
 }
 
 async function doStartMonitor(type, silent = false) {
-    const serverId = AppState.selectedServer || parseInt(document.getElementById('processServerSelect').value);
+    const serverId = AppState.selectedServer || AppState.controlServerId;
     if (!serverId) { 
-        if (!silent) alert('请先选择服务器'); 
+        if (!silent) alert('暂无在线控制服务器'); 
         return; 
     }
 
@@ -574,7 +573,7 @@ async function doStartMonitor(type, silent = false) {
 }
 
 async function doStopMonitor(type, silent = false) {
-    const serverId = AppState.selectedServer || parseInt(document.getElementById('processServerSelect').value);
+    const serverId = AppState.selectedServer || AppState.controlServerId;
     if (!serverId) return;
 
     const result = await apiRequest(`/api/servers/${serverId}/monitor/stop`, {

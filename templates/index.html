@@ -56,29 +56,20 @@
 
             <!-- 备份恢复 -->
             <section class="tab-panel" id="panel-backup">
-                <div class="panel-header">
-                    <h2>备份恢复</h2>
-                </div>
                 <div class="backup-content" id="backupContent">
-                    <p class="placeholder-text">请先选择服务器</p>
+                    <p class="placeholder-text">正在加载当前控制服务器...</p>
                 </div>
             </section>
 
             <!-- WAF部署 -->
             <section class="tab-panel" id="panel-waf">
-                <div class="panel-header">
-                    <h2>WAF 一键部署</h2>
-                </div>
                 <div class="waf-content" id="wafContent">
-                    <p class="placeholder-text">请先选择服务器</p>
+                    <p class="placeholder-text">正在加载当前控制服务器...</p>
                 </div>
             </section>
 
             <!-- 监控告警 -->
             <section class="tab-panel" id="panel-monitor">
-                <div class="panel-header">
-                    <h2>监控告警</h2>
-                </div>
                 <div class="monitor-tabs">
                     <button class="monitor-tab-btn active" data-monitor="file">文件监控</button>
                     <button class="monitor-tab-btn" data-monitor="process">进程监控</button>
@@ -86,11 +77,11 @@
                 <div class="monitor-content" id="monitorContent">
                     <!-- 文件监控 -->
                     <div class="monitor-panel active" id="monitor-file">
-                        <p class="placeholder-text">请先选择服务器</p>
+                        <p class="placeholder-text">正在加载当前控制服务器...</p>
                     </div>
                     <!-- 进程监控 -->
                     <div class="monitor-panel" id="monitor-process">
-                        <p class="placeholder-text">请先选择服务器</p>
+                        <p class="placeholder-text">正在加载当前控制服务器...</p>
                     </div>
                 </div>
             </section>
@@ -98,6 +89,7 @@
 
         <!-- 底部状态栏 -->
         <footer class="status-bar">
+            <span id="statusControlServer" class="status-control-server">当前控制服务器: 加载中...</span>
             <span id="statusOnline">在线服务器: 0</span>
             <span id="statusMonitor">活跃监控: 0</span>
             <span id="statusAlerts">未读告警: 0</span>

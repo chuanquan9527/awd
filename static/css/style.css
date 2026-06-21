@@ -837,11 +837,96 @@ tbody tr:hover {
 /* ==================== 底部状态栏 ==================== */
 .status-bar {
     display: flex;
+    align-items: center;
     gap: 2rem;
     padding: 0.5rem 1.5rem;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
     font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.status-control-server {
+    display: inline-flex;
+    align-items: center;
+    min-width: 280px;
+}
+
+.control-server-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.65rem;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(16, 185, 129, 0.08));
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.control-server-btn:hover {
+    border-color: var(--accent-blue);
+    box-shadow: var(--glow-blue);
+    transform: translateY(-1px);
+}
+
+.control-server-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+    flex-shrink: 0;
+}
+
+.control-server-label,
+.control-server-host,
+.control-server-caret,
+.control-server-empty {
+    color: var(--text-secondary);
+}
+
+.control-server-host {
+    font-size: 0.75rem;
+}
+
+.control-switcher-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.control-switcher-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+.control-switcher-item:hover,
+.control-switcher-item.active {
+    border-color: var(--accent-blue);
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.control-switcher-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1;
+}
+
+.control-switcher-main small,
+.control-switcher-type {
     color: var(--text-secondary);
 }
 

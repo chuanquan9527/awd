@@ -131,17 +131,14 @@ function showToast(message, type = 'success') {
 // ==================== 备份恢复页面 ====================
 function initBackupPage() {
     const content = document.getElementById('backupContent');
+    const server = getControlServer();
+    if (!server) {
+        content.innerHTML = '<p class="placeholder-text">暂无在线控制服务器，请先在服务器管理中连接服务器</p>';
+        return;
+    }
+    AppState.selectedServer = server.id;
     content.innerHTML = `
-        <div class="backup-selector">
-            <div class="form-group">
-                <label>选择服务器</label>
-                <select id="backupServerSelect" onchange="loadBackupServer()">
-                    <option value="">-- 请选择服务器 --</option>
-                    ${AppState.servers.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.host)})</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        <div id="backupServerContent" style="display:none;">
+        <div id="backupServerContent">
             <div class="backup-tabs">
                 <button class="monitor-tab-btn active" data-btype="web" onclick="switchBackupType('web')">网站备份</button>
                 <button class="monitor-tab-btn" data-btype="database" onclick="switchBackupType('database')">数据库备份</button>
@@ -180,6 +177,7 @@ function initBackupPage() {
             </div>
         </div>
     `;
+    loadBackupServer();
 }
 
 function switchBackupType(type) {
@@ -197,22 +195,23 @@ function switchBackupType(type) {
 }
 
 async function loadBackupServer() {
-    const serverId = document.getElementById('backupServerSelect').value;
+    const server = getControlServer();
     const content = document.getElementById('backupServerContent');
-    if (!serverId) {
-        content.style.display = 'none';
+    if (!server) {
+        if (content) content.style.display = 'none';
         return;
     }
-    content.style.display = 'block';
-    AppState.selectedServer = parseInt(serverId);
-    AppState.backupType = 'web';
+    const serverId = server.id;
+    if (content) content.style.display = 'block';
+    AppState.selectedServer = serverId;
+    AppState.backupType = AppState.backupType || 'web';
 
     const storageDirGroup = document.getElementById('storageDirGroup');
     if (storageDirGroup) storageDirGroup.style.display = 'block';
 
     // 加载可写目录和数据库列表
-    await loadWritableDirs(parseInt(serverId));
-    await loadDatabaseList(parseInt(serverId));
+    await loadWritableDirs(serverId);
+    await loadDatabaseList(serverId);
     loadBackupHistory();
 }
 
@@ -554,17 +553,14 @@ async function doDeleteOnline(backupId, versionTag) {
 // ==================== WAF 部署页面 ====================
 function initWAFPage() {
     const content = document.getElementById('wafContent');
+    const server = getControlServer();
+    if (!server) {
+        content.innerHTML = '<p class="placeholder-text">暂无在线控制服务器，请先在服务器管理中连接服务器</p>';
+        return;
+    }
+    AppState.selectedServer = server.id;
     content.innerHTML = `
-        <div class="waf-selector">
-            <div class="form-group">
-                <label>选择服务器</label>
-                <select id="wafServerSelect">
-                    <option value="">-- 请选择服务器 --</option>
-                    ${AppState.servers.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.host)})</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        <div id="wafServerContent" style="display:none;">
+        <div id="wafServerContent">
             <div class="backup-tabs" style="margin-bottom:1rem;">
                 <button class="monitor-tab-btn active" data-wtab="deploy" onclick="switchWAFTab('deploy')">一键部署</button>
                 <button class="monitor-tab-btn" data-wtab="status" onclick="switchWAFTab('status')">部署状态</button>
@@ -620,18 +616,6 @@ function initWAFPage() {
             </div>
         </div>
     `;
-
-    // 服务器选择事件
-    document.getElementById('wafServerSelect').onchange = function() {
-        const serverId = this.value;
-        const content = document.getElementById('wafServerContent');
-        if (!serverId) {
-            content.style.display = 'none';
-            return;
-        }
-        content.style.display = 'block';
-        loadWAFList();
-    };
 
     // 加载WAF列表
     loadWAFList();
@@ -705,8 +689,9 @@ function selectWAF(name, hasConfig) {
 }
 
 async function doWAFDeploy() {
-    const serverId = document.getElementById('wafServerSelect').value;
-    if (!serverId) { alert('请先选择服务器'); return; }
+    const server = getControlServer();
+    const serverId = server ? server.id : null;
+    if (!serverId) { alert('暂无在线控制服务器'); return; }
 
     const wafName = document.getElementById('wafSelectedName').value.trim();
     if (!wafName) { alert('请先选择WAF'); return; }
@@ -742,8 +727,9 @@ async function doWAFDeploy() {
 }
 
 async function doWAFUndeploy() {
-    const serverId = document.getElementById('wafServerSelect').value;
-    if (!serverId) { alert('请先选择服务器'); return; }
+    const server = getControlServer();
+    const serverId = server ? server.id : null;
+    if (!serverId) { alert('暂无在线控制服务器'); return; }
 
     if (!confirm('确定要卸载WAF吗？\n将执行以下操作：\n1. 终止 inotifywait 守护进程\n2. 删除 WAF 隐藏目录\n3. 删除 .user.ini / .htaccess\n4. 清理临时文件\n5. 尝试恢复被注入的PHP文件')) return;
 
@@ -770,8 +756,9 @@ async function doWAFUndeploy() {
 }
 
 async function checkWAFStatus() {
-    const serverId = document.getElementById('wafServerSelect').value;
-    if (!serverId) { alert('请先选择服务器'); return; }
+    const server = getControlServer();
+    const serverId = server ? server.id : null;
+    if (!serverId) { alert('暂无在线控制服务器'); return; }
 
     const resultDiv = document.getElementById('wafStatusResult');
     resultDiv.innerHTML = '<p style="color:var(--accent-blue);">检查中...</p>';

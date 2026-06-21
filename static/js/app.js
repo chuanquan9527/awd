@@ -8,6 +8,7 @@ const AppState = {
     currentMonitorTab: 'file',
     servers: [],
     selectedServer: null,
+    controlServerId: null,
     alerts: [],
     unreadAlerts: 0,
     user: null,
@@ -152,7 +153,7 @@ function switchTab(tab) {
 
     // 触发标签页加载
     if (tab === 'servers') loadServers();
-    if (tab === 'backup') { initBackupPage(); initWAFPage(); }
+    if (tab === 'backup') initBackupPage();
     if (tab === 'waf') initWAFPage();
     if (tab === 'monitor') { initMonitorPage(); loadMonitorData(); }
 }
@@ -197,6 +198,7 @@ async function loadServers() {
     if (!data || !data.success) return;
 
     AppState.servers = data.data || [];
+    ensureControlServer();
     renderServerList();
     updateStatusBar();
 }
@@ -1305,9 +1307,94 @@ function loadMonitorData() {
     // 文件监控和进程监控数据在各自的模块中加载
 }
 
+// ==================== 全局控制服务器 ====================
+function getOnlineServers() {
+    return AppState.servers.filter(s => s.status === 'online');
+}
+
+function getControlServer() {
+    return AppState.servers.find(s => s.id === AppState.controlServerId) || null;
+}
+
+function ensureControlServer() {
+    const onlineServers = getOnlineServers();
+    const currentStillOnline = onlineServers.some(s => s.id === AppState.controlServerId);
+    if (!currentStillOnline) {
+        AppState.controlServerId = onlineServers.length > 0 ? onlineServers[0].id : null;
+    }
+    AppState.selectedServer = AppState.controlServerId;
+}
+
+function renderControlServerText() {
+    const server = getControlServer();
+    if (!server) {
+        return '<span class="control-server-empty">当前控制服务器: 无在线服务器</span>';
+    }
+    return `
+        <button class="control-server-btn" onclick="showControlServerSwitcher()" title="点击切换当前控制服务器">
+            <span class="control-server-dot"></span>
+            <span class="control-server-label">当前控制服务器:</span>
+            <strong>${escapeHtml(server.name)}</strong>
+            <span class="control-server-host">${escapeHtml(server.host)}</span>
+            <span class="control-server-caret">▾</span>
+        </button>
+    `;
+}
+
+function showControlServerSwitcher() {
+    const onlineServers = getOnlineServers();
+    if (onlineServers.length === 0) {
+        alert('暂无在线服务器，请先连接服务器');
+        return;
+    }
+
+    const bodyHtml = `
+        <div class="control-switcher-list">
+            ${onlineServers.map(server => `
+                <button class="control-switcher-item ${server.id === AppState.controlServerId ? 'active' : ''}" onclick="setControlServer(${server.id}); hideModal();">
+                    <span class="control-server-dot"></span>
+                    <span class="control-switcher-main">
+                        <strong>${escapeHtml(server.name)}</strong>
+                        <small>${escapeHtml(server.host)}:${server.port}</small>
+                    </span>
+                    <span class="control-switcher-type">${server.server_type === 'own' ? '己方' : '夺取'}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+    showModal('切换当前控制服务器', bodyHtml, [
+        { text: '关闭', class: 'btn-secondary', action: hideModal }
+    ]);
+}
+
+function setControlServer(serverId) {
+    const server = AppState.servers.find(s => s.id === serverId && s.status === 'online');
+    if (!server) {
+        alert('只能切换到在线服务器');
+        return;
+    }
+    AppState.controlServerId = serverId;
+    AppState.selectedServer = serverId;
+    updateStatusBar();
+    refreshCurrentControlPanel();
+}
+
+function refreshCurrentControlPanel() {
+    if (AppState.currentTab === 'backup') {
+        initBackupPage();
+    } else if (AppState.currentTab === 'waf') {
+        initWAFPage();
+    } else if (AppState.currentTab === 'monitor') {
+        initMonitorPage();
+        loadMonitorData();
+    }
+}
+
 // ==================== 状态栏更新 ====================
 function updateStatusBar() {
-    const onlineCount = AppState.servers.filter(s => s.status === 'online').length;
+    const onlineCount = getOnlineServers().length;
+    const controlEl = document.getElementById('statusControlServer');
+    if (controlEl) controlEl.innerHTML = renderControlServerText();
     document.getElementById('statusOnline').textContent = `在线服务器: ${onlineCount}`;
 }
 
