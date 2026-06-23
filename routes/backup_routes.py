@@ -41,7 +41,12 @@ def restore_web(server_id, backup_id):
     """网站恢复"""
     try:
         result = web_backup.restore(server_id, backup_id)
-        return jsonify({'success': True, 'message': result['message']})
+        return jsonify({
+            'success': True,
+            'message': result['message'],
+            'source': result.get('source'),
+            'version_tag': result.get('version_tag')
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': f'恢复失败: {str(e)}'}), 500
 
@@ -134,7 +139,12 @@ def restore_database(server_id, backup_id):
     """数据库恢复"""
     try:
         result = db_backup.restore(server_id, backup_id)
-        return jsonify({'success': True, 'message': result['message']})
+        return jsonify({
+            'success': True,
+            'message': result['message'],
+            'source': result.get('source'),
+            'version_tag': result.get('version_tag')
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': f'恢复失败: {str(e)}'}), 500
 
