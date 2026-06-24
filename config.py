@@ -51,6 +51,12 @@ WAF_DEFAULT_FILE = 'waf.php'
 WAF_INI_FILE = '.user.ini'
 WAF_FILE_PERMISSIONS = 0o444    # 只读权限
 
+# ==================== 脚本部署配置 ====================
+SCRIPT_STORAGE_DIR = os.path.join(BASE_DIR, 'scripts')
+SCRIPT_DEPLOY_TIMEOUT = 180
+SCRIPT_ALLOWED_TYPES = ['php', 'shell']
+SCRIPT_MAX_FILE_SIZE_MB = 50
+
 # ==================== 监控配置 ====================
 MONITOR_DEFAULT_INTERVAL = 5    # 默认监控间隔（秒）
 MONITOR_MIN_INTERVAL = 2        # 最小监控间隔（秒）

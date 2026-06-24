@@ -11,6 +11,7 @@ dependencies = [
     { name = "flask-socketio" },
     { name = "paramiko" },
     { name = "requests" },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
@@ -19,6 +20,7 @@ requires-dist = [
     { name = "flask-socketio", specifier = ">=5.6.1" },
     { name = "paramiko", specifier = ">=5.0.0" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "werkzeug", specifier = ">=3.1.8" },
 ]
 
 [[package]]

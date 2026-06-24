@@ -36,6 +36,9 @@
             <button class="tab-btn" data-tab="waf">
                 <span>&#128737;</span> WAF部署
             </button>
+            <button class="tab-btn" data-tab="scripts">
+                <span>&#128221;</span> 脚本部署
+            </button>
             <button class="tab-btn" data-tab="monitor">
                 <span>&#128065;</span> 监控告警
             </button>
@@ -65,6 +68,13 @@
             <section class="tab-panel" id="panel-waf">
                 <div class="waf-content" id="wafContent">
                     <p class="placeholder-text">正在加载当前控制服务器...</p>
+                </div>
+            </section>
+
+            <!-- 脚本部署 -->
+            <section class="tab-panel" id="panel-scripts">
+                <div class="script-content" id="scriptContent">
+                    <p class="placeholder-text">正在加载脚本列表...</p>
                 </div>
             </section>
 
@@ -119,5 +129,6 @@
     <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
     <script src="{{ url_for('static', filename='js/backup.js') }}"></script>
     <script src="{{ url_for('static', filename='js/monitor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 </body>
 </html>

@@ -256,3 +256,72 @@ class MonitorConfigModel:
 
 
 
+class ScriptModel:
+    """脚本部署模型"""
+
+    @staticmethod
+    def _row_to_dict(row):
+        if not row:
+            return None
+        data = dict(row)
+        try:
+            files = json.loads(data.get('files') or '[]')
+        except Exception:
+            files = []
+        data['files'] = files
+        data['file_count'] = len(files)
+        return data
+
+    @staticmethod
+    def get_all():
+        rows = query_db('SELECT * FROM deployment_scripts ORDER BY created_at DESC')
+        return [ScriptModel._row_to_dict(row) for row in rows]
+
+    @staticmethod
+    def get_by_id(script_id):
+        row = query_db('SELECT * FROM deployment_scripts WHERE id = ?', [script_id], one=True)
+        return ScriptModel._row_to_dict(row)
+
+    @staticmethod
+    def create(data):
+        return execute_db('''
+            INSERT INTO deployment_scripts (name, script_type, description, remote_dir, deploy_script, files)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', [
+            data.get('name'),
+            data.get('script_type'),
+            data.get('description', ''),
+            data.get('remote_dir') or '/tmp',
+            data.get('deploy_script'),
+            json.dumps(data.get('files', []), ensure_ascii=False)
+        ])
+
+    @staticmethod
+    def update(script_id, data):
+        allowed = {'name', 'script_type', 'description', 'remote_dir', 'deploy_script', 'files'}
+        fields = []
+        values = []
+        for key, value in data.items():
+            if key not in allowed:
+                continue
+            fields.append(f'{key} = ?')
+            if key == 'files':
+                values.append(json.dumps(value, ensure_ascii=False))
+            else:
+                values.append(value)
+
+        if not fields:
+            return
+
+        values.append(script_id)
+        execute_db(f'''
+            UPDATE deployment_scripts
+            SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', values)
+
+    @staticmethod
+    def delete(script_id):
+        execute_db('DELETE FROM deployment_scripts WHERE id = ?', [script_id])
+
+

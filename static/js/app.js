@@ -155,6 +155,7 @@ function switchTab(tab) {
     if (tab === 'servers') loadServers();
     if (tab === 'backup') initBackupPage();
     if (tab === 'waf') initWAFPage();
+    if (tab === 'scripts') initScriptsPage();
     if (tab === 'monitor') { initMonitorPage(); loadMonitorData(); }
 }
 
@@ -1384,6 +1385,8 @@ function refreshCurrentControlPanel() {
         initBackupPage();
     } else if (AppState.currentTab === 'waf') {
         initWAFPage();
+    } else if (AppState.currentTab === 'scripts') {
+        initScriptsPage();
     } else if (AppState.currentTab === 'monitor') {
         initMonitorPage();
         loadMonitorData();

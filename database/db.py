@@ -137,6 +137,27 @@ def init_db():
     except:
         cursor.execute('ALTER TABLE monitor_config ADD COLUMN whitelist TEXT')
 
+    # deployment_scripts 表 - 脚本部署配置
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS deployment_scripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            script_type TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            remote_dir TEXT NOT NULL DEFAULT '/tmp',
+            deploy_script TEXT NOT NULL,
+            files TEXT DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 兼容旧数据：若表已存在但缺少 remote_dir 字段，则补充默认值
+    try:
+        cursor.execute('SELECT remote_dir FROM deployment_scripts LIMIT 1')
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE deployment_scripts ADD COLUMN remote_dir TEXT NOT NULL DEFAULT '/tmp'")
+
     conn.commit()
     conn.close()
 

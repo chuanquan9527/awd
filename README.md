@@ -30,6 +30,13 @@ AWD 防御运维工作台是一个面向 Attack With Defense 比赛场景的 Web
 - 当前可被工作台直接识别和部署的内置包是 `iWaf`。`waf/watchbird/` 中保留了 Watchbird WAF 资产和说明，但它缺少当前部署管理器要求的 `deploy.sh`，补齐后才会出现在 WAF 列表中。
 - 提供 WAF 状态检查和卸载入口。卸载逻辑会清理 `.user.ini`、隐藏目录、WAF watcher、临时文件，并尝试移除 PHP 文件中的注入行。
 
+### 脚本部署
+
+- 支持维护 PHP 或 Shell 类型的部署脚本，字段包括脚本名称、类型、描述、远程脚本目录、包含文件和部署 Shell 代码。
+- 支持多文件上传、追加和移除；脚本删除时会同步删除本地包含文件和部署脚本。
+- 新增和编辑时可选择当前控制服务器的可写目录，默认 `/tmp`，也支持手动输入远程绝对路径。
+- 部署时会把包含文件和 `deploy.sh` 打包上传到脚本目录下的临时子目录，执行 `bash deploy.sh <web_root> <remote_extract_dir>`，并展示 stdout、stderr 和退出码。
+
 ### 监控与告警
 
 - 文件监控：为一个或多个目录建立 MD5 基线，支持每个目录配置正则白名单。监控时检测新增、修改和删除文件。
@@ -142,6 +149,7 @@ awd/
 │   ├── backup.py             # 网站备份与恢复
 │   ├── database_backup.py    # MySQL 备份与恢复
 │   ├── waf_deploy.py         # 本地 WAF 包管理与远程部署/卸载
+│   ├── script_deploy.py      # 脚本部署包管理、文件上传和远程执行
 │   ├── file_monitor.py       # 文件 MD5 基线监控和告警推送
 │   └── process_monitor.py    # 可疑进程检测、自动 kill 和告警推送
 ├── templates/
@@ -151,6 +159,7 @@ awd/
 │   ├── css/style.css         # 控制台样式
 │   ├── js/app.js             # 主应用逻辑、服务器管理、认证状态
 │   ├── js/backup.js          # 备份恢复和 WAF 页面逻辑
+│   ├── js/scripts.js         # 脚本部署页面逻辑
 │   ├── js/monitor.js         # 文件/进程监控和告警列表逻辑
 │   ├── js/websocket.js       # Socket.IO 告警客户端
 │   └── audio/alarm.wav       # 告警音效
@@ -158,6 +167,7 @@ awd/
 │   ├── iWaf/                 # 内置 iWAF 部署包，包含 deploy.sh 和 config.json
 │   └── watchbird/            # Watchbird WAF 资产；补齐 deploy.sh 后可接入部署列表
 ├── backups/                  # 运行时生成，本地网站/数据库备份目录
+├── scripts/                  # 运行时生成，本地脚本部署包目录
 ├── uploads/                  # WAF 上传或临时文件目录
 └── logs/                     # 运行日志目录
 ```
@@ -172,11 +182,13 @@ awd/
 - `file_baselines`：文件路径与 MD5 基线。
 - `alerts`：文件变更或进程异常告警。
 - `monitor_config`：监控开关、间隔、目录、白名单和自动 kill 配置。
+- `deployment_scripts`：脚本部署元数据、脚本目录、部署 Shell 代码和包含文件列表。
 
 运行过程中会写入：
 
 - `backups/web/`：网站 tar 备份。
 - `backups/database/`：数据库 SQL 备份。
+- `scripts/`：脚本部署模块上传的包含文件和部署脚本。
 - `database/awd.db`：SQLite 数据库。
 
 这些运行时数据通常不应提交到 Git。
@@ -227,7 +239,17 @@ awd/
 }
 ```
 
-### 5. 文件完整性监控
+### 5. 脚本部署
+
+1. 进入「脚本部署」。
+2. 点击「新增脚本」，填写名称、类型、描述和脚本目录。
+3. 上传一个或多个包含文件，并编写部署 Shell 代码。
+4. 保存后在列表中点击「部署」，确认目标服务器和脚本目录。
+5. 部署完成后查看远程解压目录、退出码、stdout 和 stderr。
+
+部署脚本执行时会收到两个参数：`$1` 是目标服务器 Web 根目录，`$2` 是远程解压目录，包含文件位于 `$2/files/`。
+
+### 6. 文件完整性监控
 
 1. 进入「监控告警」的「文件监控」。
 2. 配置一个或多个目录，每个目录可填写多行正则白名单。
@@ -235,7 +257,7 @@ awd/
 4. 打开「文件监控」开关。
 5. 文件新增、修改、删除会写入告警并通过 WebSocket 推送。
 
-### 6. 进程监控
+### 7. 进程监控
 
 1. 进入「监控告警」的「进程监控」。
 2. 设置监控间隔，可选「检测到异常自动杀进程」。
@@ -289,6 +311,17 @@ awd/
 | `POST` | `/api/servers/<id>/waf/undeploy` | 卸载 WAF |
 | `GET` | `/api/servers/<id>/waf/status` | 检查 WAF 状态 |
 
+### 脚本部署
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/scripts` | 脚本列表 |
+| `GET` | `/api/scripts/<id>` | 脚本详情 |
+| `POST` | `/api/scripts` | 新增脚本，使用 `multipart/form-data` |
+| `PUT` | `/api/scripts/<id>` | 更新脚本，支持追加和移除文件 |
+| `DELETE` | `/api/scripts/<id>` | 删除脚本及本地文件 |
+| `POST` | `/api/servers/<server_id>/scripts/<script_id>/deploy` | 部署脚本到指定服务器 |
+
 ### 监控与告警
 
 | 方法 | 路径 | 说明 |
@@ -312,6 +345,7 @@ awd/
 - `servers` 表会明文保存 SSH 密码和数据库密码。建议只在比赛内网或个人隔离环境使用，并限制 `database/awd.db` 文件权限。
 - 网站恢复会递归清空目标 `web_root` 下的内容。代码已拒绝 `/`、`/root`、`/home` 等明显危险路径，但仍应在 UI 操作前确认目标目录。
 - WAF 部署和卸载会修改目标 Web 根目录下的 `.user.ini`、`.htaccess`、PHP 文件和隐藏目录。部署前建议先做网站备份。
+- 脚本部署会执行用户保存的 Shell 代码，属于远程命令执行能力，请只在可信比赛环境和已授权服务器上使用。
 - 进程自动 kill 是高风险功能，建议先观察告警规则效果，再在比赛中按需开启。
 - 本项目包含攻防比赛相关 WAF 包能力，请遵守比赛规则和授权边界。
 
@@ -320,6 +354,7 @@ awd/
 - 后端入口是 `app.py`，蓝图集中在 `routes/`，业务实现集中在 `services/`。
 - 监控线程保存在 `routes.monitor_routes` 的单例 `FileMonitor` 和 `ProcessMonitor` 中，重启应用后线程状态不会自动恢复，需要重新启动监控。
 - 前端无构建流程，页面由 Flask 模板直接加载 `static/js/*.js`。
+- 脚本部署模块的详细设计文档位于 `docs/script-deploy-design.md`。
 - 若要调整可疑进程规则，修改 `config.py` 中的 `PROCESS_MONITOR_SUSPICIOUS_PATTERNS`。
 - 若要调整默认监控间隔、备份目录、SSH 超时时间，也在 `config.py` 中配置。
 

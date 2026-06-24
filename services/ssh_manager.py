@@ -30,6 +30,17 @@ class SSHManager:
             self._locks[server_id] = threading.Lock()
         return self._locks[server_id]
 
+    @staticmethod
+    def _clean_stderr(stderr_data):
+        ignored_prefixes = (
+            'Could not chdir to home directory ',
+        )
+        lines = [
+            line for line in (stderr_data or '').splitlines()
+            if not any(line.startswith(prefix) for prefix in ignored_prefixes)
+        ]
+        return '\n'.join(lines).strip()
+
     def test_connection(self, host, port, username, password, timeout=SSH_CONNECT_TIMEOUT):
         """测试 SSH 连接"""
         client = paramiko.SSHClient()
@@ -118,7 +129,7 @@ class SSHManager:
             stdin, stdout, stderr = client.exec_command(wrapped_cmd, timeout=timeout)
             exit_code = stdout.channel.recv_exit_status()
             stdout_data = stdout.read().decode('utf-8', errors='replace').strip()
-            stderr_data = stderr.read().decode('utf-8', errors='replace').strip()
+            stderr_data = self._clean_stderr(stderr.read().decode('utf-8', errors='replace'))
             return stdout_data, stderr_data, exit_code
         except Exception as e:
             # 连接可能已断开，尝试重新连接
@@ -134,7 +145,7 @@ class SSHManager:
             stdin, stdout, stderr = client.exec_command(wrapped_cmd, timeout=timeout)
             exit_code = stdout.channel.recv_exit_status()
             stdout_data = stdout.read().decode('utf-8', errors='replace').strip()
-            stderr_data = stderr.read().decode('utf-8', errors='replace').strip()
+            stderr_data = self._clean_stderr(stderr.read().decode('utf-8', errors='replace'))
             return stdout_data, stderr_data, exit_code
 
     def upload_file(self, server_id, local_path, remote_path):

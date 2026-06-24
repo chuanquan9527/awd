@@ -12,9 +12,9 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in'):
-            if request.is_json:
+            if request.path.startswith('/api/') or request.is_json:
                 return jsonify({'success': False, 'message': '未登录，请先登录'}), 401
-            return redirect(url_for('login'))
+            return redirect(url_for('login_page'))
         return f(*args, **kwargs)
     return decorated_function
 

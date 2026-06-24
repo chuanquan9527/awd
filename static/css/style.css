@@ -1381,6 +1381,122 @@ tbody tr:hover {
     word-break: break-all;
 }
 
+/* ==================== 脚本部署 ==================== */
+.script-content .panel-header {
+    margin-bottom: 0.75rem;
+}
+
+.script-server-hint {
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.script-server-hint strong {
+    color: var(--text-primary);
+}
+
+.script-desc-cell {
+    max-width: 280px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.script-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.script-file-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+}
+
+.script-file-item span {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.script-file-item small {
+    color: var(--text-muted);
+}
+
+.script-file-item.removed {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+
+.script-code-editor {
+    width: 100%;
+    min-height: 240px;
+    resize: vertical;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+
+.script-code-editor:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.script-help-text {
+    margin: 0.45rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.form-error {
+    color: var(--accent-red);
+    font-size: 0.85rem;
+    margin-top: 0.6rem;
+}
+
+.script-deploy-result {
+    margin-top: 1rem;
+}
+
+.script-result-card {
+    margin-top: 0.75rem;
+}
+
+.script-output-block pre {
+    min-height: 42px;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0.3rem 0 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+}
+
 /* ==================== 工具类 ==================== */
 .text-center { text-align: center; }
 .text-right { text-align: right; }

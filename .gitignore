@@ -17,6 +17,7 @@ database/awd.db
 ./uploads/
 backups/
 logs/
+scripts/
 
 # Environment variables
 .env
